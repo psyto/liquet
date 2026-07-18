@@ -2,7 +2,10 @@
 //! no I/O, no producer types. This is the only place the "does money move?"
 //! policy lives, and it never changes when a primitive is added or swapped.
 
-use crate::seam::{FactsSource, InvariantVerdict, ReexecProof, Severity, SettlementIntent};
+use crate::seam::{
+    CrossVmProof, FactsSource, InvariantVerdict, ReconcileVerdict, ReexecProof, Severity,
+    SettlementIntent,
+};
 use serde::{Deserialize, Serialize};
 
 /// Policy that turns the intent + two slots into a settle/hold decision.
@@ -155,10 +158,131 @@ fn bind(reasons: &mut Vec<String>, field: &str, observed: Option<&str>, intended
     }
 }
 
+/// Gate a CROSS-VM settlement: a reconcile verdict (Slot 1, from probatio-xvm —
+/// binds every leg's producer-recovered facts to the intent) plus an invariant
+/// verdict (Slot 2, from Custos on the SVM leg). This is the flagship path: two
+/// INDEPENDENT producers, so no common-mode blind spot. Only `Matched` +
+/// invariants within threshold settles.
+pub fn decide_crossvm(
+    proof: &CrossVmProof,
+    invariant: &InvariantVerdict,
+    policy: &GatePolicy,
+) -> LiquetDecision {
+    let mut reasons = Vec::new();
+
+    // Slot 1 — cross-VM binding. Only Matched is safe to release.
+    match proof.reconcile {
+        ReconcileVerdict::Matched => {}
+        ReconcileVerdict::HalfOpen => reasons.push(format!(
+            "cross-VM settlement half-open — exactly one leg settled (funds in-flight): {}",
+            proof.reasons.join("; ")
+        )),
+        ReconcileVerdict::Mismatch => {
+            reasons.push(format!("cross-VM mismatch vs intent: {}", proof.reasons.join("; ")))
+        }
+        ReconcileVerdict::Unverifiable => {
+            reasons.push(format!("cross-VM leg unverifiable: {}", proof.reasons.join("; ")))
+        }
+    }
+
+    // Slot 2 — invariant safety (Custos malice screen on the SVM leg).
+    if invariant.level > policy.max_settle_severity {
+        let offending: Vec<_> = invariant
+            .findings
+            .iter()
+            .filter(|f| f.severity > policy.max_settle_severity)
+            .map(|f| format!("[{}] {}", f.code, f.message))
+            .collect();
+        if offending.is_empty() {
+            reasons.push(format!(
+                "invariant level {:?} exceeds settle threshold {:?}",
+                invariant.level, policy.max_settle_severity
+            ));
+        } else {
+            reasons.extend(offending);
+        }
+    }
+
+    if reasons.is_empty() {
+        // Matched reconcile is real, producer-recovered value-binding — no caveat.
+        LiquetDecision::Settle { caveats: vec![] }
+    } else {
+        LiquetDecision::Hold { reasons }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::seam::{Finding, Vm};
+    use crate::seam::{CrossVmProof, Finding, ReconcileVerdict, Vm};
+
+    fn cross_vm(reconcile: ReconcileVerdict) -> CrossVmProof {
+        CrossVmProof {
+            reconcile,
+            reasons: match reconcile {
+                ReconcileVerdict::Matched => vec![],
+                _ => vec!["demo reason".into()],
+            },
+            legs: vec![],
+            claim_hash: "abc".into(),
+            settlement_id: "settlement-1".into(),
+        }
+    }
+
+    #[test]
+    fn matched_and_clean_settles_without_caveat() {
+        let d = decide_crossvm(
+            &cross_vm(ReconcileVerdict::Matched),
+            &InvariantVerdict::green(),
+            &GatePolicy::default(),
+        );
+        assert_eq!(d, LiquetDecision::Settle { caveats: vec![] });
+    }
+
+    #[test]
+    fn half_open_holds() {
+        let d = decide_crossvm(
+            &cross_vm(ReconcileVerdict::HalfOpen),
+            &InvariantVerdict::green(),
+            &GatePolicy::default(),
+        );
+        match d {
+            LiquetDecision::Hold { reasons } => {
+                assert!(reasons.iter().any(|r| r.contains("half-open")))
+            }
+            _ => panic!("expected Hold on half-open"),
+        }
+    }
+
+    #[test]
+    fn mismatch_holds() {
+        let d = decide_crossvm(
+            &cross_vm(ReconcileVerdict::Mismatch),
+            &InvariantVerdict::green(),
+            &GatePolicy::default(),
+        );
+        assert!(!d.is_settle());
+    }
+
+    #[test]
+    fn matched_but_malicious_svm_leg_holds() {
+        let verdict = InvariantVerdict {
+            level: Severity::Red,
+            findings: vec![Finding {
+                severity: Severity::Red,
+                code: "F2-delegate".into(),
+                account: None,
+                message: "unlimited delegate granted on the delivery leg".into(),
+            }],
+        };
+        let d = decide_crossvm(&cross_vm(ReconcileVerdict::Matched), &verdict, &GatePolicy::default());
+        match d {
+            LiquetDecision::Hold { reasons } => {
+                assert!(reasons.iter().any(|r| r.contains("F2-delegate")))
+            }
+            _ => panic!("expected Hold on malicious leg even when reconcile Matched"),
+        }
+    }
 
     fn intent() -> SettlementIntent {
         SettlementIntent {

@@ -76,6 +76,38 @@ pub struct SettlementIntent {
     pub required_accounts: Vec<String>,
 }
 
+/// The cross-VM reconciliation verdict — did the legs of a chain-abstract
+/// settlement collectively honor the intent? Mirrors probatio-xvm `XvmVerdict`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReconcileVerdict {
+    /// Every leg executed and all recovered facts agree with the intent/claim.
+    Matched,
+    /// Exactly one leg executed — a half-settled cross-VM position (the
+    /// "in-flight" state a bridge leaves you praying about).
+    HalfOpen,
+    /// Legs executed but a recovered fact (amount, recipient, settlement id, …)
+    /// disagrees with the intent, or neither leg executed.
+    Mismatch,
+    /// A leg could not be verified (wrong VM tag, missing witness).
+    Unverifiable,
+}
+
+/// SLOT 1 (cross-VM form) — output of a cross-VM re-execution + reconcile
+/// producer (probatio-xvm). Supersedes per-leg caller-asserted facts: the
+/// reconcile checks EVERY leg's producer-recovered facts against the intent, so
+/// a `Matched` verdict is real value-binding with no caveat.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CrossVmProof {
+    pub reconcile: ReconcileVerdict,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<String>,
+    /// Per-leg re-execution witnesses (facts producer-recovered).
+    pub legs: Vec<ReexecProof>,
+    pub claim_hash: String,
+    pub settlement_id: String,
+}
+
 /// Ordered severity. Mirrors Custos `Level` (Green < Info < Yellow < Red).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

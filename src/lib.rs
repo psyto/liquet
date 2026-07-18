@@ -21,7 +21,8 @@ pub mod adapters;
 pub mod decide;
 pub mod seam;
 
-pub use decide::{decide, GatePolicy, LiquetDecision};
+pub use decide::{decide, decide_crossvm, GatePolicy, LiquetDecision};
 pub use seam::{
-    FactsSource, Finding, InvariantVerdict, ReexecProof, Severity, SettlementIntent, Vm,
+    CrossVmProof, FactsSource, Finding, InvariantVerdict, ReconcileVerdict, ReexecProof, Severity,
+    SettlementIntent, Vm,
 };

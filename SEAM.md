@@ -10,8 +10,28 @@ This file is versioned. When a slot shape must change, bump the version, change
 `src/seam.rs`, and update every adapter to match. Do this deliberately — it is
 the one coordination point across windows.
 
-**Version: 0.2 (Phase 1, SVM-only)** — adds intent as a gate input (coverage +
-value-binding). See "Changelog" at the bottom.
+**Version: 0.3** — adds the CROSS-VM flagship path: a reconcile-based Slot 1
+(probatio-xvm) that binds every leg's producer-recovered facts to the intent,
+with Custos as an independent Slot 2. See "Changelog" at the bottom.
+
+## Flagship path — cross-VM settlement
+
+The product IS cross-VM. A chain-abstract intent settles across an EVM pay-leg
+and an SVM delivery-leg; Liquet re-executes both and reconciles them:
+
+- **Slot 1 — `CrossVmProof`** (from probatio-xvm): `reconcile ∈ {Matched,
+  HalfOpen, Mismatch, Unverifiable}` + per-leg `ReexecProof`s with
+  producer-recovered facts. `Matched` = real value-binding, no caveat.
+- **Slot 2 — `InvariantVerdict`** (from Custos on the SVM leg): malice screen.
+- Gate: `decide_crossvm(cross_vm, invariant, policy)` — `Matched` + invariants
+  within threshold → `Settle`; otherwise `Hold` (half-open / mismatch / malice).
+
+Because Slot 1 (probatio) and Slot 2 (Custos) are now DIFFERENT producers, the
+v0.2 common-mode blind spot is resolved. The single-leg v0.2 path (`decide`,
+Custos-only, caller-asserted caveat) remains for SVM-only flows.
+
+Below documents the single-leg (v0.2) inputs; the cross-VM path reuses
+`ReexecProof` per leg and supersedes caller-asserted facts with reconcile.
 
 ## Inputs
 
@@ -66,9 +86,9 @@ fact-recovering producer fills Slot 1 — see Phase 2.
 
 | primitive | repo | slot(s) | status |
 |---|---|---|---|
-| **Custos** | `../custos` (`custos-engine`) | 1 + 2 | **Phase 1 — wiring** |
-| probatio-xvm | `../probatio/probatio-xvm` | 1 (SVM / cross-VM) | Phase 2 — dock when a cross-VM leg appears |
-| intentio | `../intentio` (`intentio-reexec`) | 1 (EVM leg) | Phase 3 — dock when an EVM leg appears |
+| **probatio-xvm** | `../probatio/probatio-xvm` | 1 (cross-VM reconcile + EVM/SVM re-exec) | **Docked (v0.3) — Codex wiring** |
+| **Custos** | `../custos` (`custos-engine`) | 2 (SVM malice screen); 1+2 in single-leg path | Docked (v0.2) |
+| intentio | `../intentio` (`intentio-reexec`) | 1 (standalone EVM leg) | in-process via probatio-xvm; standalone dock later |
 | Tessera | `../tessera` | (new slot) `ComplianceAttestation` | Phase 3 — track TBD (SBI/institutional vs personal); see below |
 
 Add a primitive **only when a real flow needs it** (demand-not-feasibility). Do
@@ -114,6 +134,9 @@ Notes:
 3. Explicit cross-VM identity / finality semantics for the probatio proof.
 
 ## Changelog
+- **v0.3** — cross-VM flagship: `ReconcileVerdict` + `CrossVmProof` (Slot 1 from
+  probatio-xvm, producer-recovered facts); `decide_crossvm`; probatio (Slot 1) +
+  Custos (Slot 2) are independent producers → common-mode blind spot resolved.
 - **v0.2** — added `SettlementIntent` as a gate input; `ReexecProof` gained
   `covered_accounts` + `facts_source`; gate does coverage + producer-recovered
   value-binding; `LiquetDecision::Settle` gained `caveats`.

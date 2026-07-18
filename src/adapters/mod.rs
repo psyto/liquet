@@ -8,6 +8,8 @@
 #[cfg(feature = "wire-custos")]
 pub mod custos;
 
-// Phase 2+ — documented, not yet wired. Dock each when a real flow needs it:
-//   pub mod probatio; // probatio_xvm::ReconstructedLeg -> ReexecProof (SVM / cross-VM)
-//   pub mod intentio; // intentio_reexec::ExecResult    -> ReexecProof (EVM leg)
+#[cfg(feature = "wire-probatio")]
+pub mod probatio;
+
+// Later — dock when a flow needs it:
+//   pub mod intentio; // intentio_reexec::ExecResult -> ReexecProof (standalone EVM leg)
