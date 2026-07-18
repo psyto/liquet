@@ -18,9 +18,11 @@
 //! - [`adapters`] — one adapter per primitive; add/remove without touching core.
 
 pub mod adapters;
+pub mod attest;
 pub mod decide;
 pub mod seam;
 
+pub use attest::{sign_decision, verify_decision, DecisionBinding, SignedDecision, VerifyError};
 pub use decide::{decide, decide_crossvm, GatePolicy, LiquetDecision};
 pub use seam::{
     CrossVmProof, FactsSource, Finding, InvariantVerdict, ReconcileVerdict, ReexecProof, Severity,

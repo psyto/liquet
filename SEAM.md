@@ -147,7 +147,23 @@ Notes:
    `policy.require_recovered_facts`.
 3. Explicit cross-VM identity / finality semantics for the probatio proof.
 
+## Non-repudiation (v0.4)
+
+`attest.rs` binds a `LiquetDecision` to the exact settlement it was computed over
+and signs it (ed25519). `DecisionBinding` commits to `settlement_id`,
+`claim_hash`, both legs' `reexec_digest`s, the reconcile verdict, the invariant
+level, and the decision; `sign_decision` produces a `SignedDecision` that
+`verify_decision` checks under the signer's public key. Because the per-leg
+digests are in the binding, a signature cannot be replayed against a different
+settlement, and the verdict cannot be forged or repudiated. Pure — no producer
+crates, verifiable with `cargo test`. Phase-2 requirement #1 addressed; still
+open: binding the intent to the *exact tx-hash / state-root* at the producer
+(probatio) so the digests themselves are anchored to chain state.
+
 ## Changelog
+- **v0.4** — non-repudiation: `attest.rs` (`DecisionBinding`, `SignedDecision`,
+  `sign_decision`, `verify_decision`) — ed25519-signed verdicts bound to the
+  per-leg reexec digests + claim hash. Additive; seam types and `decide` unchanged.
 - **v0.3** — cross-VM flagship: `ReconcileVerdict` + `CrossVmProof` (Slot 1 from
   probatio-xvm, producer-recovered facts); `decide_crossvm`; probatio (Slot 1) +
   Custos (Slot 2) are independent producers → common-mode blind spot resolved.
