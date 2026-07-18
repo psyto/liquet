@@ -13,17 +13,31 @@ stable seam — a re-execution engine for Slot 1 (proof) and an invariant engine
 for Slot 2 (gate) — and combining them into a single `Settle` / `Hold` decision.
 Liquet folds primitives in; it never absorbs their code. See [`SEAM.md`](./SEAM.md).
 
-## Status — Phase 1 (walking skeleton)
+## Status — v0.3, cross-VM flagship (runnable)
 
-- **Scope:** SVM-only, single leg, no RPC, no EVM.
-- **Producer:** `custos-engine` fills both slots (re-execution + invariants F1–F5).
-- **Core** (`src/seam.rs`, `src/decide.rs`) compiles and tests with zero heavy
-  deps: `cargo test`.
-- **Wiring** (`--features wire-custos`): the Custos adapter and the demo slice
-  are scaffolded with `TODO(codex)` markers — the convergence pass wires them
-  against the real crate until `cargo build --features wire-custos` is green and
-  `cargo run --features wire-custos --bin liquet-slice` prints SETTLE for a
-  benign transfer and HOLD for a drainer.
+Liquet re-executes a chain-abstract settlement across an **EVM pay-leg** and an
+**SVM delivery-leg**, reconciles both against the intent, and gates settle/hold:
+
+| scenario | reconcile | decision |
+|---|---|---|
+| benign atomic settlement | `Matched` | **settle** |
+| mis-delivery (wrong recipient) | `Mismatch` | **hold** |
+| half-open (pay leg only, no delivery) | `HalfOpen` | **hold** — the bridge nightmare |
+
+- **Core** (`src/seam.rs`, `src/decide.rs`) — the seam contract + gate, zero
+  heavy deps: `cargo test` (12 passing).
+- **Cross-VM demo** (`--features wire-probatio`) — fully self-contained,
+  in-process revm + LiteSVM, no network, no fixtures:
+  `cargo run --features wire-probatio --bin liquet-xvm-demo`
+- **Single-VM slice** (`--features wire-custos`) — the SVM-only Custos path.
+
+Two independent producers — probatio-xvm (Slot 1: cross-VM re-exec + reconcile)
+and Custos (Slot 2: SVM malice screen) — so no component both executes and judges.
+
+> The `wire-*` features use path dependencies on the public sibling repos
+> [`psyto/probatio`](https://github.com/psyto/probatio) and
+> [`psyto/custos`](https://github.com/psyto/custos); clone them adjacent to this
+> repo to build those features. The default build (core + tests) is standalone.
 
 ## Layout
 
@@ -38,9 +52,11 @@ SEAM.md            the contract + producer registry
 
 ## Roadmap
 
-- **Phase 2:** dock `probatio-xvm` (SVM/cross-VM re-exec witness) when a real
-  cross-VM leg appears; add the EVM leg via `intentio-reexec`.
-- **Phase 3:** add a `ComplianceAttestation` slot (Tessera) as the regulated-rail
-  pull. Track (personal vs SBI/institutional) TBD.
+- **Live invariant slot** — run Custos against the same SVM tx probatio replayed,
+  bound by its re-exec digest.
+- **Non-repudiation** — bind intent + proof to the exact leg / state context
+  (signature, state-root).
+- **First design partner** — gate real solver capital release. The only test
+  that matters.
 
 License: Apache-2.0.
