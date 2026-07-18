@@ -18,7 +18,8 @@
 //!   custos_engine::default_bank() -> Bank                      // lib.rs:313
 //!   custos_engine::sim::capture(&mut LiteSVM, tx, user, watch, token_id, system_id) -> Outcome // sim.rs:28
 
-use crate::seam::{Finding, InvariantVerdict, ReexecProof, Severity, Vm};
+use crate::seam::{FactsSource, Finding, InvariantVerdict, ReexecProof, Severity, Vm};
+use sha2::{Digest, Sha256};
 
 /// Map a custos severity level onto the seam's [`Severity`].
 pub fn severity_from_level(level: custos_engine::Level) -> Severity {
@@ -55,10 +56,44 @@ pub fn verdict_from_custos(v: &custos_engine::Verdict) -> InvariantVerdict {
 /// transfer facts      = supplied by the caller from the settlement spec when
 ///                      known (the raw Outcome does not name asset/recipient).
 ///
-/// TODO(codex): implement against the real `Outcome` shape (`sim.rs`). Keep the
-/// digest canonical and stable across runs. Suggested: sort post accounts by
-/// pubkey, hash `(pubkey, lamports, owner, data)` tuples with sha2::Sha256.
-pub fn proof_from_outcome(/* outcome: &custos_engine::Outcome */) -> ReexecProof {
-    let _ = Vm::Svm; // seam import kept live for the wired impl
-    todo!("wire custos_engine::Outcome -> ReexecProof; see SEAM.md §'custos adapter'")
+pub fn proof_from_outcome(outcome: &custos_engine::Outcome) -> ReexecProof {
+    let mut accounts: Vec<_> = outcome.post.iter().collect();
+    accounts.sort_unstable_by_key(|(pubkey, _)| pubkey.to_bytes());
+    let covered_accounts: Vec<String> =
+        accounts.iter().map(|(pubkey, _)| pubkey.to_string()).collect();
+
+    let mut hasher = Sha256::new();
+    // Versioned domain separator plus fixed-width/length-prefixed fields make
+    // the tuple encoding unambiguous. `None` records a watched account that
+    // does not exist after execution, rather than silently omitting it.
+    hasher.update(b"liquet/custos/poststate/v1");
+    for (pubkey, snapshot) in accounts {
+        hasher.update(pubkey.to_bytes());
+        match snapshot {
+            Some(snapshot) => {
+                hasher.update([1]);
+                hasher.update(snapshot.lamports.to_le_bytes());
+                hasher.update(snapshot.owner.to_bytes());
+                hasher.update((snapshot.data.len() as u64).to_le_bytes());
+                hasher.update(&snapshot.data);
+            }
+            None => hasher.update([0]),
+        }
+    }
+
+    ReexecProof {
+        vm: Vm::Svm,
+        executed: outcome.success,
+        poststate_digest: format!("{:x}", hasher.finalize()),
+        covered_accounts,
+        // Custos re-executes but does NOT recover the settlement facts (asset /
+        // amount / recipient) from the poststate, so they are caller-asserted
+        // and untrusted for intent-binding until a recovering producer (probatio)
+        // fills Slot 1. The gate surfaces this as a caveat, not silent trust.
+        facts_source: FactsSource::CallerAsserted,
+        asset: None,
+        amount: None,
+        recipient: None,
+        unverifiable_reason: None,
+    }
 }

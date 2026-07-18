@@ -22,4 +22,6 @@ pub mod decide;
 pub mod seam;
 
 pub use decide::{decide, GatePolicy, LiquetDecision};
-pub use seam::{Finding, InvariantVerdict, ReexecProof, Severity, Vm};
+pub use seam::{
+    FactsSource, Finding, InvariantVerdict, ReexecProof, Severity, SettlementIntent, Vm,
+};

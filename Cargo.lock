@@ -1535,10 +1535,17 @@ dependencies = [
 name = "liquet"
 version = "0.0.1"
 dependencies = [
+ "base64 0.22.1",
  "custos-engine",
+ "litesvm",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "solana-account",
+ "solana-keypair",
+ "solana-pubkey 3.0.0",
+ "solana-signer",
+ "solana-transaction",
 ]
 
 [[package]]
