@@ -20,11 +20,19 @@
 pub mod adapters;
 pub mod attest;
 pub mod decide;
+pub mod erc8004;
 pub mod seam;
 
 pub use attest::{
     sign_decision, verify_decision, verify_self_consistent, DecisionBinding, LegDigest,
     PolicySnapshot, SignedDecision, VerifyError,
+};
+pub use erc8004::{
+    evidence_bundle_json, validation_response, verify_bundle, BundleError, ValidationResponse,
+};
+pub use erc8004::store::{EvidenceStore, FileStore, MemStore, ResponseUri};
+pub use erc8004::validator::{
+    handle_request, OnChainAction, ResolvedRequest, SettlementValidator, ValidateError,
 };
 pub use decide::{decide, decide_crossvm, GatePolicy, LiquetDecision};
 pub use seam::{
