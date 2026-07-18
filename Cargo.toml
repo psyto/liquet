@@ -45,6 +45,8 @@ wire-custos = [
 ]
 # Turn on the probatio cross-VM adapter + the intent-lifecycle demo.
 wire-probatio = ["dep:probatio-xvm", "dep:solana-address"]
+# Live Slot 2: Custos screens probatio's exact SVM leg (needs both producers).
+wire-xvm = ["wire-probatio", "wire-custos"]
 
 [[bin]]
 name = "liquet-slice"
