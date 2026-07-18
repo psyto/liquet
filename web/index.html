@@ -138,6 +138,8 @@
   .pill.matched { background: var(--good-bg); color: var(--good); }
   .pill.mismatch { background: var(--crit-bg); color: var(--crit); }
   .pill.halfopen { background: var(--warn-bg); color: var(--warn); }
+  .pill.clean { background: var(--good-bg); color: var(--good); }
+  .pill.caught { background: var(--crit-bg); color: var(--crit); }
 
   .verdict { border-top: 1px dashed var(--line-strong); padding-top: 0.95rem; margin-top: 0.1rem; }
   .decision { display: flex; align-items: center; gap: 0.6rem; font-family: var(--mono); font-weight: 700;
@@ -256,6 +258,7 @@
           <div class="leg"><span class="vm">SVM</span><span class="lbl">delivery-leg</span><span class="tick on">✓</span></div>
         </div>
         <div class="reconcile"><span class="rec-label">reconcile</span><span class="pill matched">Matched</span></div>
+        <div class="reconcile"><span class="rec-label">screen</span><span class="pill clean">Custos clean</span></div>
         <div class="verdict">
           <div class="decision settle"><span class="glyph">→</span> SETTLE</div>
           <p class="reason">both legs executed · facts bound to intent</p>
@@ -273,6 +276,7 @@
           <div class="leg"><span class="vm">SVM</span><span class="lbl">delivery-leg</span><span class="tick off">✕</span></div>
         </div>
         <div class="reconcile"><span class="rec-label">reconcile</span><span class="pill mismatch">Mismatch</span></div>
+        <div class="reconcile"><span class="rec-label">screen</span><span class="pill clean">Custos clean</span></div>
         <div class="verdict">
           <div class="decision hold"><span class="glyph">⊘</span> HOLD</div>
           <p class="reason">cross-VM mismatch vs intent: SVM recipient disagrees with claim</p>
@@ -291,10 +295,30 @@
           <div class="leg inflight"><span class="vm">SVM</span><span class="lbl">delivery-leg</span><span class="tick wait">—</span></div>
         </div>
         <div class="reconcile"><span class="rec-label">reconcile</span><span class="pill halfopen">HalfOpen</span></div>
+        <div class="reconcile"><span class="rec-label">screen</span><span class="pill clean">Custos clean</span></div>
         <div class="verdict">
           <div class="decision hold amber"><span class="glyph">⊘</span> HOLD</div>
           <p class="reason">half-open — exactly one leg settled (funds in-flight)</p>
           <p class="gloss">EVM paid, Solana delivery never happened. The exact state a bridge leaves you praying about — held before a cent moves.</p>
+        </div>
+      </article>
+
+      <!-- Card 4 -->
+      <article class="card flag reveal d3">
+        <span class="flag-tag">reconcile can't see this</span>
+        <div class="card-top">
+          <div class="scenario">Backdoored delivery<small>correct transfer + hidden approve</small></div>
+        </div>
+        <div class="legs">
+          <div class="leg"><span class="vm">EVM</span><span class="lbl">pay-leg</span><span class="tick on">✓</span></div>
+          <div class="leg"><span class="vm">SVM</span><span class="lbl">delivery-leg</span><span class="tick on">✓</span></div>
+        </div>
+        <div class="reconcile"><span class="rec-label">reconcile</span><span class="pill matched">Matched</span></div>
+        <div class="reconcile"><span class="rec-label">screen</span><span class="pill caught">F2-delegate</span></div>
+        <div class="verdict">
+          <div class="decision hold"><span class="glyph">⊘</span> HOLD</div>
+          <p class="reason">[F2-delegate] grants delegate authority over ALL of your tokens (unlimited)</p>
+          <p class="gloss">The tokens arrive correctly — reconcile says Matched. But the same tx hands an attacker unlimited control of your account. The independent screen holds it; reconcile alone would have settled.</p>
         </div>
       </article>
     </div>
@@ -322,14 +346,13 @@
           <li><span class="m">✓</span><span>A <b>Matched</b> verdict is real value-binding: recipient, amount and settlement-id recovered and checked against intent.</span></li>
           <li><span class="m">✓</span><span><b>Half-open and mis-delivery held</b> before settlement — the failures bridges surface too late.</span></li>
           <li><span class="m">✓</span><span>Proof and screen come from <b>two independent producers</b> — no common-mode blind spot.</span></li>
-          <li><span class="m">✓</span><span><b>Slot 2 is live</b> — Custos re-runs probatio's exact delivery tx on a bare LiteSVM, bound by the recovered amount. Not a stub.</span></li>
+          <li><span class="m">✓</span><span><b>Slot 2 catches what reconcile can't</b> — a backdoored delivery that reconciles Matched is held by the independent Custos screen (F2-delegate), replayed on probatio's exact tx. Not a stub.</span></li>
         </ul>
       </div>
       <div class="panel">
         <h4 class="next">Next</h4>
         <ul class="list next">
           <li><span class="m">→</span><span><b>Non-repudiation:</b> bind the intent and proof to the exact leg and state context (signature / state-root).</span></li>
-          <li><span class="m">→</span><span><b>Malice caught in cross-VM:</b> a scenario where the screen fires on a hostile delivery leg (today it runs clean; the single-VM slice already catches a drainer).</span></li>
           <li><span class="m">→</span><span><b>First design partner:</b> gate real solver capital release — the only test that matters.</span></li>
         </ul>
       </div>
