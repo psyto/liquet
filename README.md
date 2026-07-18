@@ -34,10 +34,16 @@ Liquet re-executes a chain-abstract settlement across an **EVM pay-leg** and an
 Two independent producers — probatio-xvm (Slot 1: cross-VM re-exec + reconcile)
 and Custos (Slot 2: SVM malice screen) — so no component both executes and judges.
 
-> The `wire-*` features use path dependencies on the public sibling repos
-> [`psyto/probatio`](https://github.com/psyto/probatio) and
-> [`psyto/custos`](https://github.com/psyto/custos); clone them adjacent to this
-> repo to build those features. The default build (core + tests) is standalone.
+> **Building the features.** The default build (seam + gate + `cargo test`) is
+> standalone and fully public. The `wire-*` features use path dependencies on
+> sibling repos cloned adjacent (`../custos`, `../probatio`, …):
+>
+> - `wire-custos` (single-VM slice) — needs public
+>   [`psyto/custos`](https://github.com/psyto/custos) (the crate + runtime
+>   fixtures under `custos/gate/artifacts`).
+> - `wire-probatio` (cross-VM demo) — the EVM re-execution engine
+>   (`intentio-reexec`) is **currently private**, so this demo is shown in the
+>   [walkthrough](web/index.html) rather than being externally buildable today.
 
 ## Layout
 

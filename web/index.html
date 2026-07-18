@@ -188,6 +188,17 @@
   code.inl { font-family: var(--mono); font-size: 0.88em; background: var(--accent-bg); color: var(--accent);
     padding: 0.08em 0.35em; border-radius: 4px; }
 
+  .cta { margin: 2.1rem 0 0; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .ghlink { font-family: var(--mono); font-size: 0.82rem; font-weight: 600; letter-spacing: 0.02em;
+    color: var(--accent); text-decoration: none; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+    padding: 0.5rem 0.9rem; border-radius: 8px; background: var(--accent-bg); transition: background 0.15s ease; }
+  .ghlink:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .ghlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .cta-note { font-family: var(--mono); font-size: 0.68rem; color: var(--faint); letter-spacing: 0.04em; }
+  footer .meta a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line-strong); }
+  footer .meta a:hover { color: var(--accent); border-color: var(--accent); }
+  footer .meta a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
   .reveal { opacity: 0; transform: translateY(12px); animation: rise 0.6s cubic-bezier(0.2,0.7,0.2,1) forwards; }
   .reveal.d1 { animation-delay: 0.05s; } .reveal.d2 { animation-delay: 0.12s; }
   .reveal.d3 { animation-delay: 0.19s; }
@@ -214,6 +225,7 @@
     <p class="eyebrow reveal">Cross-VM settlement verification</p>
     <h1 class="reveal d1">Bridges move tokens and hope. <span class="q">Liquet re-executes both legs and proves the intent was honored.</span></h1>
     <p class="lede reveal d2">A chain-abstract intent settles across two chains — an <b>EVM pay-leg</b> and a <b>Solana delivery-leg</b>. Liquet re-runs both in-process, reconciles them against what the solver actually promised, and answers one question before money is released: <b>did this settle the way it was supposed to?</b></p>
+    <p class="cta reveal d3"><a class="ghlink" href="https://github.com/psyto/liquet">View the code on GitHub<span aria-hidden="true"> ↗</span></a><span class="cta-note">seam + gate build standalone · Apache-2.0</span></p>
   </section>
 
   <div class="contrast reveal">
@@ -326,7 +338,7 @@
 
 <footer>
   <div class="wrap">
-    <span class="meta"><b>psyto/liquet</b> · Apache-2.0 · seam v0.3 · 12 tests green</span>
+    <span class="meta"><a href="https://github.com/psyto/liquet">psyto/liquet</a> · Apache-2.0 · seam v0.3 · 12 tests green</span>
     <span class="tagline">no rpc · no bridge · no trust-me</span>
   </div>
 </footer>
