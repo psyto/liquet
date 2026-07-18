@@ -1,0 +1,27 @@
+[package]
+name = "liquet"
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0"
+description = "Neutral re-execution + invariant gate for cross-VM settlement. Consumes verification primitives (Custos, probatio, intentio) through one seam; answers settle/hold before funds move."
+repository = "https://github.com/psyto/liquet"
+
+# The core (`seam`, `decide`) has ZERO heavy deps and always compiles.
+# Wiring to a producer primitive lives behind a feature so the contract can
+# evolve independently of any in-flight primitive (Custos, probatio, ...).
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = { version = "0.10", optional = true }
+# Phase-1 producer. Path dep — Liquet consumes, never absorbs.
+custos-engine = { path = "../custos/engine", optional = true }
+
+[features]
+default = []
+# Turn on the Custos adapter + the walking-skeleton slice binary.
+wire-custos = ["dep:custos-engine", "dep:sha2"]
+
+[[bin]]
+name = "liquet-slice"
+path = "src/bin/slice.rs"
+required-features = ["wire-custos"]
