@@ -260,4 +260,93 @@ crates, so they land behind features, not in the default `cargo test`.
 4. **Repo home.** This surface consumes Liquet's signed decision → belongs as a
    Liquet surface (`src/erc8004/` + this doc) OR a thin sibling `liquet-erc8004`
    crate. Recommend: in-repo module behind a `wire-erc8004` feature, mirroring
-   the existing `wire-custos` / `wire-probatio` pattern.
+   the existing `wire-custos` / `wire-probatio` pattern. **Resolved:** pure core
+   (mod/store/validator) ships in the default build; only the `alloy` shell +
+   wired producer go behind features.
+
+---
+
+## 11. `wire-erc8004` shell — recorded design intent (before build)
+
+The pure core (§7 steps 1–2 + 3–4-core) is done. This section fixes the
+non-obvious decisions for the remaining `alloy` transport shell so a builder does
+not re-derive them. The shell is **transport only** — it MUST NOT compute any
+`response`/`tag`/decision; all policy lives in `handle_request`. If a change
+needs verdict logic, it belongs in the core, not here.
+
+**D1 — Registry chain ≠ settlement chains (three RPCs).** The
+`ValidationRequest`/`Response` live on an **EVM registry chain** (Base Sepolia,
+chainId **84532**). The *validated work* is a cross-VM event whose pay-leg and
+delivery-leg live on **other** chains (e.g. a Tempo/Ethereum pay-leg + a Solana
+delivery-leg). So the shell holds three connections: (a) registry EVM RPC — read
+events, submit responses; (b) pay-leg chain RPC/prestate; (c) Solana RPC for the
+delivery leg. The `requestURI` claim MUST carry each leg's chain id + tx ref so
+the validator knows where to re-execute. Do not assume the work is on the
+registry chain — that conflation is the trap.
+
+**D2 — Two keys, explicitly bound.** The **EVM secp256k1 key** submits the tx and
+IS the on-chain `validatorAddress` (ERC-8004's discovery/trust anchor + gas
+payer). The **ed25519 key** signs the evidence bundle (`attest.rs`, the portable
+non-repudiation). They are different curves and different roles — keep them
+separate. **Bind them** so a relying party has one trust anchor, not two: the
+validator's ERC-8004 registration / agent-card advertises its ed25519 signer key;
+a consumer trusts `validatorAddress` on-chain, fetches the advertised ed25519 key,
+and checks the bundle's `signer` matches it. Without this binding, `verify_bundle`
+authenticates *a* signer but not *our* validator.
+
+**D3 — Input integrity mirrors output.** Before acting on a `ValidationRequest`,
+fetch `requestURI` and verify its content hashes to the on-chain `requestHash`.
+Mismatch → ignore/abstain (a malformed or spoofed request), never re-execute
+against unverified input. This is the input-side twin of the `responseHash` check
+`verify_bundle` does on the output side.
+
+**D4 — Determinism / reorg safety.** Re-execution MUST run against a **pinned,
+finalized block** for each leg (the tx ref + block in the claim), never "latest"
+— otherwise the verdict is non-deterministic and the `responseHash` is not
+reproducible by an independent replayer (the whole point). On the registry chain:
+wait N confirmations before treating a `ValidationRequest` as real, and before
+treating our own submitted `validationResponse` as landed. L2 reorgs on Base
+Sepolia are expected.
+
+**D5 — Idempotency (the contract will not dedupe for us).** ERC-8004 *permits
+multiple responses per request* ("progressive validation"), so a re-submitted
+response is not rejected — it pollutes. The shell dedupes itself: (a) persist a
+last-processed-block cursor so restarts neither rescan from genesis nor miss
+events; (b) before submitting, call `getValidationStatus(requestHash)` and skip if
+our `validatorAddress` already has a response with the same `responseHash`.
+Because the verdict is content-addressed and deterministic (D4), re-processing the
+same request is safe once this check is in place.
+
+**D6 — `responseURI` must be publicly fetchable, and reachable *before* the
+response lands.** The `mem://` / `file://` `EvidenceStore` schemes are
+demo/local-only. Production needs an `EvidenceStore` impl that returns a public
+URL or IPFS CID (HTTP gateway or `ipfs add`). Ordering constraint at the transport
+level: **publish the bundle and confirm it is fetchable, THEN submit
+`validationResponse`** — otherwise the registry points at evidence no one can
+retrieve. (`handle_request` already pins before returning `Respond`; the shell
+must additionally confirm reachability before the on-chain call.)
+
+**D7 — Abstain must be recorded off-chain.** `Abstain` = do not call
+`validationResponse`. But an invisible abstain is indistinguishable from "never
+saw the request." The shell logs every `Abstain` (request_hash, tag, reason) to a
+local record so the operator can see "we saw X, abstained: unverifiable." Optional:
+a private evidence entry for the abstain, not linked on-chain.
+
+**D8 — Minimal `sol!` surface.** Bind only what the shell touches: the
+`ValidationRequest` event (read/watch), `validationResponse(...)` (write), and
+`getValidationStatus(requestHash)` (read, for D5). Do not bind the Reputation
+Registry or the rest of the Validation Registry.
+
+**D9 — Config surface.** `registry_rpc` + `registry_chain_id` (84532) +
+`validation_registry_addr` + `identity_registry_addr`; `validator_evm_key`
+(secp256k1, gas + validatorAddress); `evidence_signer` (ed25519); per-leg RPCs
+(pay-leg, Solana); `evidence_gateway_base` (how `responseURI` is formed);
+`confirmations` (D4); `cursor_path` (D5). Dev = anvil fork of Base Sepolia; the
+recorded demo = the live reference `ValidationRegistry` on Base Sepolia.
+
+**D10 — `SettlementValidator::validate` is the other shell (step 5), not this
+one.** This shell resolves the request and submits the action; producing the
+signed decision (probatio-xvm + Custos + `decide_crossvm` + `attest`, behind
+`wire-xvm`) is a separate impl injected via the `SettlementValidator` seam. Keep
+the two shells independent so the transport can be tested against a mock validator
+(as the core tests already do) before the heavy producer pipeline is wired.
