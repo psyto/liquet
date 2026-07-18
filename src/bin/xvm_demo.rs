@@ -17,17 +17,14 @@
 //! Fully self-contained: no RPC, no server, no fixtures.
 //! Run:  cargo run --features wire-probatio --bin liquet-xvm-demo
 //!
+//!   With wire-xvm, a 4th case: a delivery that reconciles Matched but hides an
+//!   unlimited-delegate approve → the Custos malice screen (Slot 2) HOLDs it —
+//!   the case reconcile structurally cannot see.
+//!
 //! ---------------------------------------------------------------------------
-//! TODO(codex): this spec construction mirrors probatio-xvm's own integration
-//! test `tests/xvm.rs` (helpers `real_evm_leg` / `real_svm_leg` / `claim`) and
-//! its `examples/demo_receipts.rs`. Align the exact field values, enum variants
-//! and the `Address` import with the real crate until
-//! `cargo build --features wire-probatio` is green and this runs. If `Address`
-//! is not re-exported by probatio_xvm, add `solana-address` to the wire-probatio
-//! feature deps (that is the type of `SvmTransferSpec.recipient_owner` / `.mint`).
-//! With `wire-xvm`, Custos independently replays Probatio's exact SVM
+//! With `wire-xvm`, Custos independently replays probatio's exact SVM
 //! delivery-leg as the live Slot-2 malice screen. `wire-probatio` alone keeps
-//! this demo usable with the green placeholder invariant.
+//! the demo usable with a green placeholder invariant.
 
 use liquet::{
     adapters::probatio::crossvm_from_receipt, decide_crossvm, GatePolicy, ReconcileVerdict,
@@ -42,6 +39,8 @@ use probatio_xvm::{
 };
 // TODO(codex): confirm the origin of `Address` (probatio re-export vs solana_address).
 use solana_address::Address;
+#[cfg(feature = "wire-xvm")]
+use probatio_xvm::{reconstruct_svm_leg_with_malice, SvmMalice};
 
 const SETTLEMENT_ID: &str = "settlement-1";
 const AMOUNT: u64 = 25;
@@ -90,9 +89,18 @@ fn claim(mint: Address, recipient: Address) -> Claim {
     }
 }
 
-fn run(name: &str, gloss: &str, evm: EvmPaySpec, svm: SvmTransferSpec, claim: Claim) {
+fn leg(svm: SvmTransferSpec) -> probatio_xvm::SvmReconstruction {
+    reconstruct_svm_leg(&svm).expect("svm delivery leg")
+}
+
+fn run(
+    name: &str,
+    gloss: &str,
+    evm: EvmPaySpec,
+    svm_leg: probatio_xvm::SvmReconstruction,
+    claim: Claim,
+) {
     let evm_leg = reconstruct_evm_leg(&evm).expect("evm leg");
-    let svm_leg = reconstruct_svm_leg(&svm).expect("svm leg");
     let receipt = reconcile(&evm_leg.leg, &svm_leg.leg, &claim);
     let cross = crossvm_from_receipt(&receipt, &evm_leg.leg, &svm_leg.leg);
 
@@ -120,7 +128,7 @@ fn main() {
         "benign atomic settlement",
         "intent honored on both chains → safe to release funds",
         evm_spec(AMOUNT),
-        svm_spec(mint, recipient, AMOUNT),
+        leg(svm_spec(mint, recipient, AMOUNT)),
         claim(mint, recipient),
     );
 
@@ -128,7 +136,7 @@ fn main() {
         "mis-delivery (wrong recipient)",
         "solver delivered to the wrong account → caught, funds held",
         evm_spec(AMOUNT),
-        svm_spec(mint, attacker, AMOUNT), // delivered to attacker, claim expects recipient
+        leg(svm_spec(mint, attacker, AMOUNT)), // delivered to attacker, claim expects recipient
         claim(mint, recipient),
     );
 
@@ -136,7 +144,24 @@ fn main() {
         "half-open (pay leg only, no delivery)",
         "EVM paid but Solana delivery never happened (the bridge nightmare) → held",
         evm_spec(AMOUNT),
-        svm_spec(mint, recipient, 0), // amount 0 → not delivered → executed=false
+        leg(svm_spec(mint, recipient, 0)), // amount 0 → not delivered → executed=false
+        claim(mint, recipient),
+    );
+
+    // The malice screen earns its keep: a delivery that reconciles Matched but
+    // backdoors the payer's account. Reconcile cannot see it; Custos (Slot 2) can.
+    // Only meaningful with the live screen — under wire-probatio alone this would
+    // (correctly) show that reconcile by itself settles a backdoored delivery.
+    #[cfg(feature = "wire-xvm")]
+    run(
+        "backdoored delivery (correct transfer + hidden approve)",
+        "tokens arrive correctly, but the same tx grants an attacker unlimited delegate over your account → reconcile says Matched, the malice screen HOLDs",
+        evm_spec(AMOUNT),
+        reconstruct_svm_leg_with_malice(
+            &svm_spec(mint, recipient, AMOUNT),
+            &SvmMalice::ApproveUnlimited { delegate: attacker },
+        )
+        .expect("malicious svm leg"),
         claim(mint, recipient),
     );
 
