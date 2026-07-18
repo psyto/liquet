@@ -2368,6 +2368,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "solana-account",
+ "solana-address 2.2.0",
  "solana-keypair",
  "solana-pubkey 3.0.0",
  "solana-signer",

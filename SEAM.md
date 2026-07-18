@@ -125,6 +125,20 @@ Notes:
   leg/state context or signed, so it establishes coverage + (when recovered)
   value-binding, not non-repudiation.
 
+## Known witness-fidelity gaps (cross-VM, from the v0.3 review)
+- The per-leg `ReexecProof` carries `asset`/`amount`/`recipient` but NOT the
+  leg's `recovered_settlement_id` / `payer_or_source`. Liquet therefore *trusts*
+  probatio's `Matched` verdict but cannot *independently replay* every reconcile
+  check. Fine while probatio is the trusted Slot-1 producer; add these to the leg
+  proof when independent replay / non-repudiation is needed (see Phase 2).
+- `covered_accounts` is empty for probatio legs (probatio does not yet expose the
+  full witness account set). `decide_crossvm` does not use coverage, so this is
+  inert — deliberately NOT faked with owner/mint addresses, which would overclaim.
+- Custos Slot-2 on the cross-VM path is stubbed green in the demo. Real wiring
+  must: (1) have probatio expose the exact SVM delivery tx + state scope, (2) run
+  Custos against that same context, (3) bind the Custos verdict to probatio's SVM
+  reexec digest before using it as Slot 2 (else a fresh common-mode reappears).
+
 ## Phase 2 requirements (from the v0.2 review)
 1. Authenticated binding of the proof to the exact leg and state context
    (tx-hash / state-root / signature), so intent + proof are non-repudiable.

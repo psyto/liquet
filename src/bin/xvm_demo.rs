@@ -41,14 +41,16 @@ use solana_address::Address;
 
 const SETTLEMENT_ID: &str = "settlement-1";
 const AMOUNT: u64 = 25;
+const EVM_PAYER: &str = "0x1000000000000000000000000000000000000001";
+const EVM_SETTLEMENT: &str = "0x2000000000000000000000000000000000000002";
 
 fn evm_spec(amount: u64) -> EvmPaySpec {
     EvmPaySpec {
-        payer: "0x0000000000000000000000000000000000000abc".to_string(),
-        settlement_contract: "0x0000000000000000000000000000000000000def".to_string(),
+        payer: EVM_PAYER.to_string(),
+        settlement_contract: EVM_SETTLEMENT.to_string(),
         asset: "ETH".to_string(),
         amount,
-        payer_start_balance_wei: 1_000_000,
+        payer_start_balance_wei: 1_000,
         settlement_start_balance_wei: 0,
         recovered_settlement_id: Some(SETTLEMENT_ID.to_string()),
         settlement_binding_mode: SettlementBindingMode::Slot0,
@@ -57,11 +59,11 @@ fn evm_spec(amount: u64) -> EvmPaySpec {
 
 fn svm_spec(mint: Address, recipient: Address, amount: u64) -> SvmTransferSpec {
     SvmTransferSpec {
-        source_owner_seed: [7u8; 32],
+        source_owner_seed: [0x11; 32],
         recipient_owner: recipient,
         mint,
         amount,
-        decimals: 6,
+        decimals: 0,
         source_start_amount: 1_000,
         recipient_start_amount: 0,
         recovered_settlement_id: Some(SETTLEMENT_ID.to_string()),
@@ -71,7 +73,7 @@ fn svm_spec(mint: Address, recipient: Address, amount: u64) -> SvmTransferSpec {
 
 fn claim(mint: Address, recipient: Address) -> Claim {
     Claim {
-        payer: "0x0000000000000000000000000000000000000abc".to_string(),
+        payer: EVM_PAYER.to_string(),
         asset: "ETH".to_string(),
         amount: AMOUNT,
         good: GoodClaim {
