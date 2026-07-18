@@ -29,6 +29,11 @@ use serde::{Deserialize, Serialize};
 pub mod store;
 /// Chain-agnostic validator orchestration: request → decision → response/abstain.
 pub mod validator;
+/// Step 5 — the real `SettlementValidator` (wired Liquet pipeline), behind `wire-xvm`.
+#[cfg(feature = "wire-xvm")]
+pub mod liquet_validator;
+#[cfg(feature = "wire-xvm")]
+pub use liquet_validator::{LiquetValidator, SettlementRequest};
 
 /// Score for a verified-good action (`uint8` in the registry). Binary by design
 /// so `getSummary`'s `averageResponse` stays a clean trust signal.

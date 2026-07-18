@@ -202,15 +202,23 @@ the registry now carries a re-executed proof it did not."
    `wire-erc8004` feature: watch `ValidationRequest(ourAddr, …)` on anvil / Base
    Sepolia, resolve `requestURI` → `ResolvedRequest`, call `handle_request`, submit
    the `OnChainAction` via `validationResponse`. Transport only — no policy.
-5. **TODO** — **Wire real Liquet** as the `SettlementValidator` impl (behind
-   `wire-xvm`: probatio-xvm + Custos + `decide_crossvm` + `attest`). Deploy the
-   ERC-8004 reference `ValidationRegistry` + `IdentityRegistry`, register one
-   agent, run all 5 cases end-to-end.
+5-impl. ✅ **DONE** — **Wired Liquet** as the `SettlementValidator`:
+   `src/erc8004/liquet_validator.rs` (`LiquetValidator`, behind `wire-xvm`) parses
+   the `(evm, svm, claim)` bundle and runs probatio-xvm + Custos + `decide_crossvm`
+   + `attest`. 4 tests through `handle_request`: benign→`PASS`/`matched` (evidence
+   `verify_bundle`s), mis-delivery→`FAIL`/`mismatch`, half-open→`FAIL`/`half-open`,
+   **backdoored→`FAIL`/`unsafe`** (atomic, but the delivery leg grants an attacker
+   an unlimited delegate — the case a Reputation star cannot see).
+   **44 tests green with `--features wire-xvm`.**
+5-live. **TODO (needs live chain)** — deploy the ERC-8004 reference
+   `ValidationRegistry` + `IdentityRegistry`, register one agent, run all cases
+   end-to-end on anvil / Base Sepolia (pairs with the 3–4-shell).
 
-Steps 1–2 and the 3–4 **core** are done and pure-tested. What remains is the two
-I/O shells: the `alloy` transport (3–4-shell) and the wired producer pipeline as
-`SettlementValidator::validate` (step 5) — both need a chain / the heavy producer
-crates, so they land behind features, not in the default `cargo test`.
+Steps 1–2, the 3–4 **core**, and the **step-5 producer pipeline**
+(`SettlementValidator::validate` behind `wire-xvm`) are done and tested. What
+remains is the on-chain I/O: the `alloy` transport (3–4-shell) plus a live deploy
+of the reference registries (5-live) — both need a chain, so they land behind a
+`wire-erc8004` feature, not the default `cargo test`.
 
 ---
 
