@@ -322,13 +322,14 @@
           <li><span class="m">✓</span><span>A <b>Matched</b> verdict is real value-binding: recipient, amount and settlement-id recovered and checked against intent.</span></li>
           <li><span class="m">✓</span><span><b>Half-open and mis-delivery held</b> before settlement — the failures bridges surface too late.</span></li>
           <li><span class="m">✓</span><span>Proof and screen come from <b>two independent producers</b> — no common-mode blind spot.</span></li>
+          <li><span class="m">✓</span><span><b>Slot 2 is live</b> — Custos re-runs probatio's exact delivery tx on a bare LiteSVM, bound by the recovered amount. Not a stub.</span></li>
         </ul>
       </div>
       <div class="panel">
         <h4 class="next">Next</h4>
         <ul class="list next">
           <li><span class="m">→</span><span><b>Non-repudiation:</b> bind the intent and proof to the exact leg and state context (signature / state-root).</span></li>
-          <li><span class="m">→</span><span><b>Live invariant slot:</b> run the malice screen against the same SVM tx the reconcile replayed, bound by its digest.</span></li>
+          <li><span class="m">→</span><span><b>Malice caught in cross-VM:</b> a scenario where the screen fires on a hostile delivery leg (today it runs clean; the single-VM slice already catches a drainer).</span></li>
           <li><span class="m">→</span><span><b>First design partner:</b> gate real solver capital release — the only test that matters.</span></li>
         </ul>
       </div>
