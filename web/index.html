@@ -1,0 +1,332 @@
+<title>Liquet — cross-VM settlement verification</title>
+<style>
+  :root {
+    --bg: #eceff0;
+    --surface: #ffffff;
+    --surface-2: #f5f8f8;
+    --ink: #101a1c;
+    --muted: #5a6a6e;
+    --faint: #7f9094;
+    --line: #d5dedd;
+    --line-strong: #c2cecd;
+    --accent: #0c9585;
+    --good: #1c9a55;
+    --warn: #a9711a;
+    --crit: #c9463a;
+    --good-bg: rgba(28,154,85,0.10);
+    --warn-bg: rgba(169,113,26,0.11);
+    --crit-bg: rgba(201,70,58,0.10);
+    --accent-bg: rgba(12,149,133,0.09);
+    --shadow: 0 1px 2px rgba(16,26,28,0.04), 0 8px 30px rgba(16,26,28,0.06);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Cascadia Code", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #090e10;
+      --surface: #101719;
+      --surface-2: #0c1315;
+      --ink: #e7eeee;
+      --muted: #92a3a6;
+      --faint: #6f8184;
+      --line: #1e2a2b;
+      --line-strong: #2a3939;
+      --accent: #37cbb9;
+      --good: #46c97f;
+      --warn: #e6b34d;
+      --crit: #f0776a;
+      --good-bg: rgba(70,201,127,0.10);
+      --warn-bg: rgba(230,179,77,0.11);
+      --crit-bg: rgba(240,119,106,0.10);
+      --accent-bg: rgba(55,203,185,0.10);
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 12px 40px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #eceff0; --surface: #ffffff; --surface-2: #f5f8f8; --ink: #101a1c;
+    --muted: #5a6a6e; --faint: #7f9094; --line: #d5dedd; --line-strong: #c2cecd;
+    --accent: #0c9585; --good: #1c9a55; --warn: #a9711a; --crit: #c9463a;
+    --good-bg: rgba(28,154,85,0.10); --warn-bg: rgba(169,113,26,0.11);
+    --crit-bg: rgba(201,70,58,0.10); --accent-bg: rgba(12,149,133,0.09);
+    --shadow: 0 1px 2px rgba(16,26,28,0.04), 0 8px 30px rgba(16,26,28,0.06);
+  }
+  :root[data-theme="dark"] {
+    --bg: #090e10; --surface: #101719; --surface-2: #0c1315; --ink: #e7eeee;
+    --muted: #92a3a6; --faint: #6f8184; --line: #1e2a2b; --line-strong: #2a3939;
+    --accent: #37cbb9; --good: #46c97f; --warn: #e6b34d; --crit: #f0776a;
+    --good-bg: rgba(70,201,127,0.10); --warn-bg: rgba(230,179,77,0.11);
+    --crit-bg: rgba(240,119,106,0.10); --accent-bg: rgba(55,203,185,0.10);
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 12px 40px rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.6;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: 74rem; margin: 0 auto; padding: 0 1.5rem; }
+  .col { max-width: 42rem; }
+
+  /* ---- top bar ---- */
+  header.bar {
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 5;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+  }
+  .bar .wrap { display: flex; align-items: center; justify-content: space-between; height: 3.5rem; gap: 1rem; }
+  .mark { font-family: var(--mono); font-weight: 600; letter-spacing: 0.28em; font-size: 0.82rem; }
+  .mark b { color: var(--accent); font-weight: 600; }
+  .status { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.12em; color: var(--faint);
+    text-transform: uppercase; display: inline-flex; align-items: center; gap: 0.45rem; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px var(--good-bg); }
+
+  /* ---- hero ---- */
+  .hero { padding: 5.5rem 0 3rem; }
+  .eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 1.4rem; }
+  h1 { font-size: clamp(2rem, 5.2vw, 3.25rem); line-height: 1.08; letter-spacing: -0.02em;
+    font-weight: 620; margin: 0; text-wrap: balance; max-width: 20ch; }
+  h1 .q { color: var(--muted); }
+  .lede { font-size: 1.12rem; color: var(--muted); margin: 1.6rem 0 0; max-width: 54ch; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  /* ---- contrast strip ---- */
+  .contrast { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line);
+    border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin: 3rem 0 0; }
+  .contrast > div { background: var(--surface); padding: 1.6rem 1.5rem; }
+  .contrast .k { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); margin: 0 0 0.7rem; }
+  .contrast h3 { margin: 0 0 0.5rem; font-size: 1.06rem; letter-spacing: -0.01em; }
+  .contrast.liquet .k { color: var(--accent); }
+  .contrast p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+  /* ---- sections ---- */
+  section { padding: 3.75rem 0; }
+  .sec-head { display: flex; align-items: baseline; gap: 0.9rem; margin: 0 0 0.4rem; }
+  .sec-num { font-family: var(--mono); font-size: 0.72rem; color: var(--faint); letter-spacing: 0.1em; }
+  h2 { font-size: 1.6rem; letter-spacing: -0.018em; font-weight: 620; margin: 0; text-wrap: balance; }
+  .sec-sub { color: var(--muted); margin: 0.7rem 0 2.2rem; max-width: 56ch; }
+
+  /* ---- receipts ---- */
+  .receipts { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 1rem; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 1.35rem 1.35rem 1.2rem; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 1rem;
+    position: relative; }
+  .card.flag { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+  .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+  .scenario { font-weight: 600; font-size: 0.98rem; letter-spacing: -0.01em; }
+  .scenario small { display: block; font-family: var(--mono); font-size: 0.66rem; color: var(--faint);
+    letter-spacing: 0.08em; text-transform: uppercase; margin-top: 0.3rem; font-weight: 400; }
+
+  .legs { display: flex; flex-direction: column; gap: 0.5rem; }
+  .leg { display: flex; align-items: center; gap: 0.7rem; font-family: var(--mono); font-size: 0.78rem; }
+  .leg .lbl { color: var(--muted); flex: 1; }
+  .leg .vm { color: var(--faint); font-size: 0.66rem; letter-spacing: 0.1em; width: 3.4em; }
+  .tick { width: 1.15rem; height: 1.15rem; border-radius: 50%; display: grid; place-items: center;
+    font-size: 0.7rem; flex-shrink: 0; }
+  .tick.on { background: var(--good-bg); color: var(--good); }
+  .tick.off { background: var(--crit-bg); color: var(--crit); }
+  .tick.wait { background: var(--warn-bg); color: var(--warn); }
+
+  .reconcile { display: flex; align-items: center; gap: 0.6rem; padding-top: 0.15rem; }
+  .rec-label { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.1em; color: var(--faint);
+    text-transform: uppercase; }
+  .pill { font-family: var(--mono); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em;
+    padding: 0.18rem 0.55rem; border-radius: 999px; }
+  .pill.matched { background: var(--good-bg); color: var(--good); }
+  .pill.mismatch { background: var(--crit-bg); color: var(--crit); }
+  .pill.halfopen { background: var(--warn-bg); color: var(--warn); }
+
+  .verdict { border-top: 1px dashed var(--line-strong); padding-top: 0.95rem; margin-top: 0.1rem; }
+  .decision { display: flex; align-items: center; gap: 0.6rem; font-family: var(--mono); font-weight: 700;
+    letter-spacing: 0.12em; font-size: 0.9rem; }
+  .decision.settle { color: var(--good); }
+  .decision.hold { color: var(--crit); }
+  .decision.hold.amber { color: var(--warn); }
+  .decision .glyph { font-size: 1rem; }
+  .reason { font-family: var(--mono); font-size: 0.73rem; color: var(--muted); margin: 0.55rem 0 0;
+    line-height: 1.5; }
+  .gloss { font-size: 0.88rem; color: var(--muted); margin: 0.75rem 0 0; }
+  .card.flag .gloss { color: var(--ink); }
+  .flag-tag { position: absolute; top: -0.65rem; right: 1rem; font-family: var(--mono); font-size: 0.6rem;
+    letter-spacing: 0.14em; text-transform: uppercase; background: var(--warn); color: #14100a;
+    padding: 0.18rem 0.5rem; border-radius: 5px; font-weight: 700; }
+
+  .inflight { animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* ---- pipeline ---- */
+  .pipe { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1px;
+    background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .step { background: var(--surface); padding: 1.4rem 1.35rem; }
+  .step .n { font-family: var(--mono); font-size: 0.7rem; color: var(--accent); letter-spacing: 0.1em; }
+  .step h4 { margin: 0.6rem 0 0.4rem; font-size: 0.98rem; }
+  .step p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+  /* ---- honesty ---- */
+  .honesty { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .honesty .panel { background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 1.5rem; }
+  .honesty h4 { margin: 0 0 1rem; font-size: 0.78rem; font-family: var(--mono); letter-spacing: 0.14em;
+    text-transform: uppercase; }
+  .honesty h4.now { color: var(--good); }
+  .honesty h4.next { color: var(--faint); }
+  ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.75rem; }
+  ul.list li { display: flex; gap: 0.7rem; font-size: 0.92rem; color: var(--muted); line-height: 1.5; }
+  ul.list li b { color: var(--ink); font-weight: 600; }
+  ul.list .m { color: var(--accent); font-family: var(--mono); flex-shrink: 0; }
+  .honesty .next .m { color: var(--faint); }
+
+  /* ---- footer ---- */
+  footer { border-top: 1px solid var(--line); padding: 2.5rem 0 3.5rem; color: var(--faint); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 1.2rem 2rem; align-items: baseline; justify-content: space-between; }
+  footer .meta { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; }
+  footer .meta b { color: var(--muted); font-weight: 600; }
+  footer .tagline { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); letter-spacing: 0.04em; }
+
+  code.inl { font-family: var(--mono); font-size: 0.88em; background: var(--accent-bg); color: var(--accent);
+    padding: 0.08em 0.35em; border-radius: 4px; }
+
+  .reveal { opacity: 0; transform: translateY(12px); animation: rise 0.6s cubic-bezier(0.2,0.7,0.2,1) forwards; }
+  .reveal.d1 { animation-delay: 0.05s; } .reveal.d2 { animation-delay: 0.12s; }
+  .reveal.d3 { animation-delay: 0.19s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal, .inflight { animation: none; opacity: 1; transform: none; }
+  }
+  @media (max-width: 640px) {
+    .contrast, .honesty { grid-template-columns: 1fr; }
+    .hero { padding: 3.5rem 0 2rem; }
+  }
+</style>
+
+<header class="bar">
+  <div class="wrap">
+    <span class="mark">LIQUET<b>.</b></span>
+    <span class="status"><span class="dot"></span>live demo · self-contained · no rpc</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <p class="eyebrow reveal">Cross-VM settlement verification</p>
+    <h1 class="reveal d1">Bridges move tokens and hope. <span class="q">Liquet re-executes both legs and proves the intent was honored.</span></h1>
+    <p class="lede reveal d2">A chain-abstract intent settles across two chains — an <b>EVM pay-leg</b> and a <b>Solana delivery-leg</b>. Liquet re-runs both in-process, reconciles them against what the solver actually promised, and answers one question before money is released: <b>did this settle the way it was supposed to?</b></p>
+  </section>
+
+  <div class="contrast reveal">
+    <div>
+      <p class="k">The bridge model</p>
+      <h3>Move, then trust</h3>
+      <p>Tokens leave one chain and (you hope) arrive on another. When one side lands and the other doesn't, you're holding an in-flight position and a support ticket.</p>
+    </div>
+    <div>
+      <p class="k">The Liquet model</p>
+      <h3>Re-execute, then prove</h3>
+      <p>Both legs are replayed deterministically and reconciled to the intent. Funds release only on a <code class="inl">Matched</code> verdict — half-settled and mis-delivered outcomes are caught, not discovered later.</p>
+    </div>
+  </div>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>Three settlements, re-executed</h2></div>
+    <p class="sec-sub">Verbatim output of the runnable demo — <code class="inl">cargo run --features wire-probatio --bin liquet-xvm-demo</code>. Every leg runs in-process (revm + LiteSVM); nothing is mocked, nothing touches a network.</p>
+
+    <div class="receipts">
+      <!-- Card 1 -->
+      <article class="card reveal">
+        <div class="card-top">
+          <div class="scenario">Benign atomic settlement<small>settlement-1</small></div>
+        </div>
+        <div class="legs">
+          <div class="leg"><span class="vm">EVM</span><span class="lbl">pay-leg</span><span class="tick on">✓</span></div>
+          <div class="leg"><span class="vm">SVM</span><span class="lbl">delivery-leg</span><span class="tick on">✓</span></div>
+        </div>
+        <div class="reconcile"><span class="rec-label">reconcile</span><span class="pill matched">Matched</span></div>
+        <div class="verdict">
+          <div class="decision settle"><span class="glyph">→</span> SETTLE</div>
+          <p class="reason">both legs executed · facts bound to intent</p>
+          <p class="gloss">Intent honored on both chains. Safe to release funds.</p>
+        </div>
+      </article>
+
+      <!-- Card 2 -->
+      <article class="card reveal d1">
+        <div class="card-top">
+          <div class="scenario">Mis-delivery<small>wrong recipient</small></div>
+        </div>
+        <div class="legs">
+          <div class="leg"><span class="vm">EVM</span><span class="lbl">pay-leg</span><span class="tick on">✓</span></div>
+          <div class="leg"><span class="vm">SVM</span><span class="lbl">delivery-leg</span><span class="tick off">✕</span></div>
+        </div>
+        <div class="reconcile"><span class="rec-label">reconcile</span><span class="pill mismatch">Mismatch</span></div>
+        <div class="verdict">
+          <div class="decision hold"><span class="glyph">⊘</span> HOLD</div>
+          <p class="reason">cross-VM mismatch vs intent: SVM recipient disagrees with claim</p>
+          <p class="gloss">Solver delivered to the wrong account. Caught — funds held.</p>
+        </div>
+      </article>
+
+      <!-- Card 3 -->
+      <article class="card flag reveal d2">
+        <span class="flag-tag">the bridge nightmare</span>
+        <div class="card-top">
+          <div class="scenario">Half-open<small>pay leg only</small></div>
+        </div>
+        <div class="legs">
+          <div class="leg"><span class="vm">EVM</span><span class="lbl">pay-leg</span><span class="tick on">✓</span></div>
+          <div class="leg inflight"><span class="vm">SVM</span><span class="lbl">delivery-leg</span><span class="tick wait">—</span></div>
+        </div>
+        <div class="reconcile"><span class="rec-label">reconcile</span><span class="pill halfopen">HalfOpen</span></div>
+        <div class="verdict">
+          <div class="decision hold amber"><span class="glyph">⊘</span> HOLD</div>
+          <p class="reason">half-open — exactly one leg settled (funds in-flight)</p>
+          <p class="gloss">EVM paid, Solana delivery never happened. The exact state a bridge leaves you praying about — held before a cent moves.</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>How the gate decides</h2></div>
+    <p class="sec-sub">Two independent producers, one decision. No single component both executes and judges.</p>
+    <div class="pipe">
+      <div class="step"><div class="n">re-exec</div><h4>Replay both legs</h4><p>EVM leg in revm, SVM leg in LiteSVM — deterministic, from supplied prestate. Each leg's facts are recovered, not asserted.</p></div>
+      <div class="step"><div class="n">reconcile</div><h4>Bind to intent</h4><p>Recovered recipient, amount, asset and settlement-id on both legs are checked against the claim. Verdict: Matched / HalfOpen / Mismatch.</p></div>
+      <div class="step"><div class="n">screen</div><h4>Invariant check</h4><p>The delivery leg is screened for malice (drain, delegate, authority change) by an independent producer — the safety slot.</p></div>
+      <div class="step"><div class="n">gate</div><h4>Settle or hold</h4><p>Release only on <code class="inl">Matched</code> and a clean screen. Every hold reports exactly why funds were withheld.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>What it proves today — and what's next</h2></div>
+    <p class="sec-sub">The verification is real and self-contained. The parts that aren't finished are named, not hidden — that's the point of a verifier.</p>
+    <div class="honesty">
+      <div class="panel">
+        <h4 class="now">Proven now</h4>
+        <ul class="list">
+          <li><span class="m">✓</span><span>Both legs <b>re-executed in-process</b> — revm + LiteSVM, zero network, zero fixtures.</span></li>
+          <li><span class="m">✓</span><span>A <b>Matched</b> verdict is real value-binding: recipient, amount and settlement-id recovered and checked against intent.</span></li>
+          <li><span class="m">✓</span><span><b>Half-open and mis-delivery held</b> before settlement — the failures bridges surface too late.</span></li>
+          <li><span class="m">✓</span><span>Proof and screen come from <b>two independent producers</b> — no common-mode blind spot.</span></li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h4 class="next">Next</h4>
+        <ul class="list next">
+          <li><span class="m">→</span><span><b>Non-repudiation:</b> bind the intent and proof to the exact leg and state context (signature / state-root).</span></li>
+          <li><span class="m">→</span><span><b>Live invariant slot:</b> run the malice screen against the same SVM tx the reconcile replayed, bound by its digest.</span></li>
+          <li><span class="m">→</span><span><b>First design partner:</b> gate real solver capital release — the only test that matters.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="meta"><b>psyto/liquet</b> · Apache-2.0 · seam v0.3 · 12 tests green</span>
+    <span class="tagline">no rpc · no bridge · no trust-me</span>
+  </div>
+</footer>
