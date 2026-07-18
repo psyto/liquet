@@ -13,6 +13,7 @@
 use crate::seam::InvariantVerdict;
 use litesvm::LiteSVM;
 use probatio_xvm::SvmReconstruction;
+use solana_pubkey::Pubkey;
 
 /// Run Custos over the delivery leg and return the invariant verdict, bound to
 /// probatio's execution. `Err` if the replay diverges from the leg (i.e. Custos
@@ -22,32 +23,52 @@ pub fn invariant_from_svm_leg(recon: &SvmReconstruction) -> Result<InvariantVerd
 
     // Byte-identical prestate (probatio task 021 exposes these).
     for (addr, account) in &recon.prestate {
-        svm.set_account(*addr, account.clone())
+        svm.set_account(Pubkey::new_from_array(addr.to_bytes()), account.clone())
             .map_err(|e| format!("seed prestate {addr}: {e:?}"))?;
     }
-    svm.airdrop(&recon.payer, recon.payer_airdrop_lamports)
+    let payer = Pubkey::new_from_array(recon.payer.to_bytes());
+    let watch: Vec<_> = recon
+        .watch
+        .iter()
+        .map(|address| Pubkey::new_from_array(address.to_bytes()))
+        .collect();
+    svm.airdrop(&payer, recon.payer_airdrop_lamports)
         .map_err(|e| format!("airdrop payer: {e:?}"))?;
 
     // capture MUTATES svm — it runs the tx itself, snapshotting pre/post.
-    // TODO(codex): reconcile Address vs Pubkey types across probatio (solana_address)
-    // and custos (solana_pubkey) for `payer` and `watch`; convert if not identical.
     let outcome = custos_engine::sim::capture(
         &mut svm,
         recon.transaction.clone(),
-        recon.payer,
-        &recon.watch,
+        payer,
+        &watch,
         custos_engine::spl_token_id(),
         custos_engine::system_id(),
     );
 
-    // Binding: Custos must have reproduced probatio's execution. Cheap invariant —
-    // both agree on whether the leg executed. (A deeper bind — matching the
-    // delivered amount against `recon.leg.amount` — can be added once we decode the
-    // recipient token account from `outcome.post`.)
-    if outcome.success != recon.leg.executed {
+    if !outcome.success {
+        return Err("Custos replay transaction failed".to_string());
+    }
+
+    // A successful memo-only transaction is a valid replay of a half-open leg,
+    // so bind the producer semantics through the captured recipient delta rather
+    // than equating transaction success with `leg.executed`.
+    let recipient = *watch
+        .get(1)
+        .ok_or_else(|| "probatio delivery leg exposed no recipient watch account".to_string())?;
+    let amount = |snapshot: Option<&custos_engine::AccountSnapshot>, phase| {
+        snapshot
+            .and_then(custos_engine::TokenAccount::parse)
+            .map(|account| account.amount)
+            .ok_or_else(|| format!("Custos replay has no decodable recipient token account {phase}"))
+    };
+    let before = amount(outcome.pre.get(&recipient).and_then(Option::as_ref), "before")?;
+    let after = amount(outcome.post.get(&recipient).and_then(Option::as_ref), "after")?;
+    let delivered = after.saturating_sub(before);
+    let expected = recon.leg.amount.unwrap_or(0);
+    if delivered != expected || (delivered > 0) != recon.leg.executed {
         return Err(format!(
-            "replay diverged from leg: custos success={}, probatio executed={}",
-            outcome.success, recon.leg.executed
+            "replay diverged from leg: Custos delivered={delivered}, Probatio delivered={expected}, Probatio executed={}",
+            recon.leg.executed
         ));
     }
 

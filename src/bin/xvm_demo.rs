@@ -25,13 +25,17 @@
 //! `cargo build --features wire-probatio` is green and this runs. If `Address`
 //! is not re-exported by probatio_xvm, add `solana-address` to the wire-probatio
 //! feature deps (that is the type of `SvmTransferSpec.recipient_owner` / `.mint`).
-//! The Custos invariant slot is stubbed green here; wiring Custos onto the SVM
-//! delivery-leg is the next increment (needs probatio to expose that leg's tx).
+//! With `wire-xvm`, Custos independently replays Probatio's exact SVM
+//! delivery-leg as the live Slot-2 malice screen. `wire-probatio` alone keeps
+//! this demo usable with the green placeholder invariant.
 
 use liquet::{
-    adapters::probatio::crossvm_from_receipt, decide_crossvm, GatePolicy, InvariantVerdict,
-    ReconcileVerdict,
+    adapters::probatio::crossvm_from_receipt, decide_crossvm, GatePolicy, ReconcileVerdict,
 };
+#[cfg(feature = "wire-xvm")]
+use liquet::adapters::xvm_custos::invariant_from_svm_leg;
+#[cfg(not(feature = "wire-xvm"))]
+use liquet::InvariantVerdict;
 use probatio_xvm::{
     reconcile, reconstruct_evm_leg, reconstruct_svm_leg, Claim, EvmPaySpec, GoodClaim, Mandate,
     MemoMode, SettlementBindingMode, SvmTransferSpec,
@@ -92,12 +96,16 @@ fn run(name: &str, gloss: &str, evm: EvmPaySpec, svm: SvmTransferSpec, claim: Cl
     let receipt = reconcile(&evm_leg.leg, &svm_leg.leg, &claim);
     let cross = crossvm_from_receipt(&receipt, &evm_leg.leg, &svm_leg.leg);
 
-    // Slot 2 (Custos SVM malice screen) stubbed green for now — see TODO above.
+    #[cfg(feature = "wire-xvm")]
+    let invariant = invariant_from_svm_leg(&svm_leg).expect("Custos replay of SVM delivery leg");
+    #[cfg(not(feature = "wire-xvm"))]
     let invariant = InvariantVerdict::green();
     let decision = decide_crossvm(&cross, &invariant, &GatePolicy::default());
 
     println!("── {name}");
     println!("   reconcile : {:?}", cross.reconcile);
+    #[cfg(feature = "wire-xvm")]
+    println!("   custos    : {:?} (real replay)", invariant.level);
     println!("   decision  : {}", serde_json::to_string(&decision).expect("json"));
     println!("   {gloss}");
     println!();
