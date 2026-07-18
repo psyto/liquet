@@ -150,20 +150,29 @@ Notes:
 ## Non-repudiation (v0.4)
 
 `attest.rs` binds a `LiquetDecision` to the exact settlement it was computed over
-and signs it (ed25519). `DecisionBinding` commits to `settlement_id`,
-`claim_hash`, both legs' `reexec_digest`s, the reconcile verdict, the invariant
-level, and the decision; `sign_decision` produces a `SignedDecision` that
-`verify_decision` checks under the signer's public key. Because the per-leg
-digests are in the binding, a signature cannot be replayed against a different
-settlement, and the verdict cannot be forged or repudiated. Pure — no producer
-crates, verifiable with `cargo test`. Phase-2 requirement #1 addressed; still
-open: binding the intent to the *exact tx-hash / state-root* at the producer
-(probatio) so the digests themselves are anchored to chain state.
+and signs it (ed25519, `verify_strict`). `DecisionBinding` commits to
+`settlement_id`, `claim_hash`, **all** legs' reexec digests, the reconcile
+verdict, the **full invariant verdict** (level + every finding), the **gate
+policy**, and the decision. `verify_decision` authenticates against a **pinned
+trusted signer** — a receipt signed with any other key is rejected;
+`verify_self_consistent` is the explicitly-unpinned check and is *not*
+authentication. Because every leg digest + the full verdict are bound, a
+signature cannot be replayed against a different settlement, nor paired with a
+false explanation of why Liquet settled/held. Pure — verifiable with `cargo test`
+(a golden vector locks the wire encoding; domain `v2`).
+
+Phase-2 requirement #1 addressed. Still open: (a) anchoring the digests to
+*canonical chain state* (exact tx-hash / state-root at the producer, probatio),
+and (b) a length-prefixed canonical encoding before any external verifier
+implementation.
 
 ## Changelog
-- **v0.4** — non-repudiation: `attest.rs` (`DecisionBinding`, `SignedDecision`,
-  `sign_decision`, `verify_decision`) — ed25519-signed verdicts bound to the
-  per-leg reexec digests + claim hash. Additive; seam types and `decide` unchanged.
+- **v0.4** — non-repudiation: `attest.rs` — ed25519-signed verdicts bound to all
+  leg reexec digests + full invariant verdict + policy + claim hash;
+  `verify_decision` pins a trusted signer (`verify_self_consistent` is the
+  unpinned, non-authenticating check). Hardened per the Codex adversarial review
+  (P1 signer pinning, P1 full-verdict binding, P2 all-legs/policy/golden-vector).
+  Additive; seam types and `decide` unchanged.
 - **v0.3** — cross-VM flagship: `ReconcileVerdict` + `CrossVmProof` (Slot 1 from
   probatio-xvm, producer-recovered facts); `decide_crossvm`; probatio (Slot 1) +
   Custos (Slot 2) are independent producers → common-mode blind spot resolved.

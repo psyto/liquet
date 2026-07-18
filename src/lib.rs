@@ -22,7 +22,10 @@ pub mod attest;
 pub mod decide;
 pub mod seam;
 
-pub use attest::{sign_decision, verify_decision, DecisionBinding, SignedDecision, VerifyError};
+pub use attest::{
+    sign_decision, verify_decision, verify_self_consistent, DecisionBinding, LegDigest,
+    PolicySnapshot, SignedDecision, VerifyError,
+};
 pub use decide::{decide, decide_crossvm, GatePolicy, LiquetDecision};
 pub use seam::{
     CrossVmProof, FactsSource, Finding, InvariantVerdict, ReconcileVerdict, ReexecProof, Severity,

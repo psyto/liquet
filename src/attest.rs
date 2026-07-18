@@ -1,68 +1,100 @@
 //! Non-repudiation for the Liquet verdict.
 //!
 //! A [`LiquetDecision`] on its own is just a struct — anyone could claim Liquet
-//! said "settle". This layer binds a decision to the EXACT re-executed legs and
-//! intent it was computed over (per-leg reexec digests + claim hash + both
-//! verdicts), then signs that binding with an ed25519 key. A relying party (a
-//! solver's LP, a counterparty) verifies the signature with Liquet's public key
-//! and checks the digests match the settlement they expected — so the verdict
-//! cannot be forged, cannot be repudiated, and cannot be replayed against a
-//! different settlement.
+//! said "settle". This layer binds a decision to the EXACT re-executed legs,
+//! intent, invariant screen, and policy it was computed under, then signs that
+//! binding with an ed25519 key. A relying party (a solver's LP, a counterparty)
+//! calls [`verify_decision`] with the TRUSTED operator key and checks the
+//! digests match the settlement they expected — so the verdict cannot be forged,
+//! cannot be repudiated, and cannot be replayed against a different settlement.
 //!
 //! Pure: no producer crates, no network — operates on the seam types only.
 
-use crate::decide::LiquetDecision;
+use crate::decide::{GatePolicy, LiquetDecision};
 use crate::seam::{CrossVmProof, InvariantVerdict, ReconcileVerdict, Severity, Vm};
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-/// The exact facts a signed decision commits to. Binding a decision to the
-/// per-leg reexec digests + claim hash means a signature over it cannot be
-/// reused for any other settlement.
+/// One re-executed leg's identity, committed in full (not just the first per VM).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LegDigest {
+    pub vm: Vm,
+    pub executed: bool,
+    pub poststate_digest: String,
+}
+
+/// The gate policy a decision was made under — so a recipient can audit *why* a
+/// borderline (Info/Yellow) case settled or held.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PolicySnapshot {
+    pub max_settle_severity: Severity,
+    pub require_executed: bool,
+    pub require_recovered_facts: bool,
+}
+
+impl PolicySnapshot {
+    pub fn of(p: &GatePolicy) -> Self {
+        Self {
+            max_settle_severity: p.max_settle_severity,
+            require_executed: p.require_executed,
+            require_recovered_facts: p.require_recovered_facts,
+        }
+    }
+}
+
+/// The exact facts a signed decision commits to. Binding to every leg's reexec
+/// digest, the full invariant verdict, and the policy means a signature over it
+/// cannot be reused for another settlement, nor paired with a false explanation
+/// of why Liquet settled or held.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecisionBinding {
     pub settlement_id: String,
     pub claim_hash: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub evm_reexec_digest: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub svm_reexec_digest: Option<String>,
+    /// ALL legs, in the producer's order — not a first-per-VM projection.
+    pub legs: Vec<LegDigest>,
     pub reconcile: ReconcileVerdict,
-    pub invariant_level: Severity,
+    /// The complete invariant verdict (level + every finding), not just severity.
+    pub invariant: InvariantVerdict,
+    pub policy: PolicySnapshot,
     pub decision: LiquetDecision,
 }
 
 impl DecisionBinding {
-    /// Assemble the binding from the two slots and the gate decision.
+    /// Assemble the binding from the two slots, the policy, and the decision.
     pub fn new(
         proof: &CrossVmProof,
         invariant: &InvariantVerdict,
+        policy: &GatePolicy,
         decision: &LiquetDecision,
     ) -> Self {
-        let digest_for = |vm: Vm| {
-            proof
-                .legs
-                .iter()
-                .find(|l| l.vm == vm)
-                .map(|l| l.poststate_digest.clone())
-        };
         Self {
             settlement_id: proof.settlement_id.clone(),
             claim_hash: proof.claim_hash.clone(),
-            evm_reexec_digest: digest_for(Vm::Evm),
-            svm_reexec_digest: digest_for(Vm::Svm),
+            legs: proof
+                .legs
+                .iter()
+                .map(|l| LegDigest {
+                    vm: l.vm,
+                    executed: l.executed,
+                    poststate_digest: l.poststate_digest.clone(),
+                })
+                .collect(),
             reconcile: proof.reconcile,
-            invariant_level: invariant.level,
+            invariant: invariant.clone(),
+            policy: PolicySnapshot::of(policy),
             decision: decision.clone(),
         }
     }
 
     /// Domain-separated 32-byte hash the signature commits to. Deterministic:
-    /// serde_json serializes these scalar/string/enum fields in a stable order.
+    /// every field is an ordered struct / enum / scalar / string (no maps, no
+    /// floats), so `serde_json` output is stable. NOTE: `serde_json` is not a
+    /// formal cross-version wire canon — the golden-vector test locks today's
+    /// encoding; bump the domain version if the encoding ever changes.
     pub fn digest(&self) -> [u8; 32] {
         let mut h = Sha256::new();
-        h.update(b"liquet/decision/v1\0");
+        h.update(b"liquet/decision/v2\0");
         h.update(serde_json::to_vec(self).expect("DecisionBinding is serializable"));
         h.finalize().into()
     }
@@ -91,27 +123,32 @@ pub fn sign_decision(binding: DecisionBinding, key: &SigningKey) -> SignedDecisi
 /// Why a signed decision failed verification.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VerifyError {
-    /// `expected_signer` did not match the signature's signer key.
+    /// The receipt was not signed by the trusted signer.
     SignerMismatch,
     /// The signer key or signature was not valid hex / the wrong length.
     Malformed,
-    /// The signature did not verify against the binding under the signer key —
-    /// the decision was forged or the binding was tampered with.
+    /// The signature did not verify against the binding — forged or tampered.
     BadSignature,
 }
 
-/// Verify a signed decision. If `expected_signer` is given, the signer key must
-/// match it (hex, case-insensitive). Returns `Ok(())` only when the signature is
-/// valid over the binding — i.e. the decision is authentic and unmodified.
-pub fn verify_decision(
-    signed: &SignedDecision,
-    expected_signer: Option<&str>,
-) -> Result<(), VerifyError> {
-    if let Some(expected) = expected_signer {
-        if !expected.eq_ignore_ascii_case(&signed.signer) {
-            return Err(VerifyError::SignerMismatch);
-        }
+/// Verify a signed decision **against a trusted signer** (hex ed25519 public
+/// key, case-insensitive). This is the authentication path: `Ok(())` means the
+/// receipt was signed by `trusted_signer` over exactly this binding. Anyone can
+/// sign a binding with their own key, so pinning the trusted key is mandatory
+/// for non-repudiation — use [`verify_self_consistent`] only when you explicitly
+/// do not need to establish *who* signed.
+pub fn verify_decision(signed: &SignedDecision, trusted_signer: &str) -> Result<(), VerifyError> {
+    if !trusted_signer.eq_ignore_ascii_case(&signed.signer) {
+        return Err(VerifyError::SignerMismatch);
     }
+    verify_self_consistent(signed)
+}
+
+/// Check that `signed.signature` is a valid signature over `signed.binding` by
+/// the key embedded in `signed.signer`. This proves internal consistency ONLY —
+/// it does NOT establish that the signer is trusted. Not authentication; use
+/// [`verify_decision`] for that.
+pub fn verify_self_consistent(signed: &SignedDecision) -> Result<(), VerifyError> {
     let pk: [u8; 32] = hex::decode(&signed.signer)
         .ok()
         .and_then(|b| b.try_into().ok())
@@ -119,8 +156,8 @@ pub fn verify_decision(
     let vk = VerifyingKey::from_bytes(&pk).map_err(|_| VerifyError::Malformed)?;
     let sig_bytes = hex::decode(&signed.signature).map_err(|_| VerifyError::Malformed)?;
     let sig = Signature::from_slice(&sig_bytes).map_err(|_| VerifyError::Malformed)?;
-    // Strict verification rejects non-canonical signatures — no malleability for
-    // a non-repudiable receipt.
+    // Strict verification rejects non-canonical / small-order signatures and weak
+    // keys — no malleability for a non-repudiable receipt.
     vk.verify_strict(&signed.binding.digest(), &sig)
         .map_err(|_| VerifyError::BadSignature)
 }
@@ -128,7 +165,7 @@ pub fn verify_decision(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::seam::{FactsSource, ReexecProof};
+    use crate::seam::{FactsSource, Finding, ReexecProof};
 
     fn leg(vm: Vm, digest: &str) -> ReexecProof {
         ReexecProof {
@@ -158,50 +195,109 @@ mod tests {
         DecisionBinding::new(
             &proof(),
             &InvariantVerdict::green(),
+            &GatePolicy::default(),
             &LiquetDecision::Settle { caveats: vec![] },
         )
     }
 
-    fn key() -> SigningKey {
+    fn operator() -> SigningKey {
         SigningKey::from_bytes(&[7u8; 32])
     }
 
     #[test]
-    fn binding_captures_both_leg_digests() {
+    fn binding_captures_all_legs() {
         let b = binding();
-        assert_eq!(b.evm_reexec_digest.as_deref(), Some("evm-dig"));
-        assert_eq!(b.svm_reexec_digest.as_deref(), Some("svm-dig"));
+        assert_eq!(b.legs.len(), 2);
+        assert_eq!(b.legs[0].vm, Vm::Evm);
+        assert_eq!(b.legs[0].poststate_digest, "evm-dig");
+        assert_eq!(b.legs[1].vm, Vm::Svm);
     }
 
     #[test]
-    fn sign_then_verify_ok() {
-        let signed = sign_decision(binding(), &key());
-        assert_eq!(verify_decision(&signed, None), Ok(()));
-        let signer = signed.signer.clone();
-        assert_eq!(verify_decision(&signed, Some(&signer)), Ok(()));
+    fn verify_against_trusted_signer_ok() {
+        let signed = sign_decision(binding(), &operator());
+        let operator_pk = signed.signer.clone();
+        assert_eq!(verify_decision(&signed, &operator_pk), Ok(()));
+        assert_eq!(verify_self_consistent(&signed), Ok(()));
+    }
+
+    #[test]
+    fn attacker_key_is_self_consistent_but_not_trusted() {
+        // P1-a: an attacker signs the same binding with their own key. It is
+        // internally consistent, but verification against the trusted operator
+        // key must reject it.
+        let operator_pk = hex::encode(operator().verifying_key().to_bytes());
+        let attacker = SigningKey::from_bytes(&[9u8; 32]);
+        let forged = sign_decision(binding(), &attacker);
+        assert_eq!(verify_self_consistent(&forged), Ok(())); // consistent...
+        assert_eq!(verify_decision(&forged, &operator_pk), Err(VerifyError::SignerMismatch)); // ...but not trusted
     }
 
     #[test]
     fn tampered_decision_fails() {
-        let mut signed = sign_decision(binding(), &key());
+        let mut signed = sign_decision(binding(), &operator());
+        let pk = signed.signer.clone();
         signed.binding.decision = LiquetDecision::Hold { reasons: vec!["forged".into()] };
-        assert_eq!(verify_decision(&signed, None), Err(VerifyError::BadSignature));
+        assert_eq!(verify_decision(&signed, &pk), Err(VerifyError::BadSignature));
+    }
+
+    #[test]
+    fn changed_invariant_finding_fails() {
+        // P1-b: same level (Info), different findings → the signature must not
+        // carry over, so a false "why it settled" cannot ride a valid signature.
+        let signed = sign_decision(binding(), &operator());
+        let pk = signed.signer.clone();
+        let mut swapped = signed.clone();
+        swapped.binding.invariant = InvariantVerdict {
+            level: Severity::Green,
+            findings: vec![Finding {
+                severity: Severity::Green,
+                code: "injected".into(),
+                account: None,
+                message: "not what was screened".into(),
+            }],
+        };
+        assert_eq!(verify_decision(&swapped, &pk), Err(VerifyError::BadSignature));
     }
 
     #[test]
     fn replay_against_different_leg_fails() {
-        // Take a valid signature and try to pass it off for a different execution.
-        let mut signed = sign_decision(binding(), &key());
-        signed.binding.svm_reexec_digest = Some("some-other-svm-execution".into());
-        assert_eq!(verify_decision(&signed, None), Err(VerifyError::BadSignature));
+        let signed = sign_decision(binding(), &operator());
+        let pk = signed.signer.clone();
+        let mut swapped = signed.clone();
+        swapped.binding.legs[1].poststate_digest = "some-other-svm-execution".into();
+        assert_eq!(verify_decision(&swapped, &pk), Err(VerifyError::BadSignature));
     }
 
     #[test]
-    fn wrong_expected_signer_rejected() {
-        let signed = sign_decision(binding(), &key());
+    fn extra_leg_changes_binding() {
+        // P2: an added same-VM leg must not produce the same binding.
+        let mut p = proof();
+        p.legs.push(leg(Vm::Svm, "sneaky-extra-leg"));
+        let b2 = DecisionBinding::new(
+            &p,
+            &InvariantVerdict::green(),
+            &GatePolicy::default(),
+            &LiquetDecision::Settle { caveats: vec![] },
+        );
+        assert_ne!(binding().digest(), b2.digest());
+    }
+
+    #[test]
+    fn malformed_signer_or_signature_rejected() {
+        let mut signed = sign_decision(binding(), &operator());
+        let pk = signed.signer.clone();
+        signed.signature = "zz".into();
+        assert_eq!(verify_decision(&signed, &pk), Err(VerifyError::Malformed));
+    }
+
+    #[test]
+    fn digest_is_stable_golden_vector() {
+        // Locks today's wire encoding. If this changes intentionally, bump the
+        // domain version in `digest()` and update this vector.
         assert_eq!(
-            verify_decision(&signed, Some("00ff")),
-            Err(VerifyError::SignerMismatch)
+            hex::encode(binding().digest()),
+            "dd2c88522195119e465419b67cdaaf0257d42d1d0526653c3be4d3e47c9995b4"
         );
     }
 }
