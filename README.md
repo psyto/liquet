@@ -41,9 +41,11 @@ and Custos (Slot 2: SVM malice screen) — so no component both executes and jud
 > - `wire-custos` (single-VM slice) — needs public
 >   [`psyto/custos`](https://github.com/psyto/custos) (the crate + runtime
 >   fixtures under `custos/gate/artifacts`).
-> - `wire-probatio` (cross-VM demo) — the EVM re-execution engine
->   (`intentio-reexec`) is **currently private**, so this demo is shown in the
->   [walkthrough](web/index.html) rather than being externally buildable today.
+> - `wire-probatio` (cross-VM demo) — uses
+>   [`mppsol/probatio`](https://github.com/mppsol/probatio); its EVM
+>   re-execution engine (`intentio-reexec`) is **currently private**, so this
+>   demo is shown in the [walkthrough](web/index.html) rather than being
+>   externally buildable today.
 
 ## Layout
 
