@@ -35,12 +35,18 @@
 //! cross-instruction form (`index != u16::MAX`) — that is the crux of guard ①.
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    ed25519_program,
-    sysvar::instructions::load_instruction_at_checked,
-};
+use anchor_lang::solana_program::sysvar::instructions::load_instruction_at_checked;
 
 use crate::GateError;
+
+/// Native Ed25519 signature-verification program id
+/// (`Ed25519SigVerify111111111111111111111111111`). Hardcoded as bytes because
+/// neither the `ed25519_program` module nor the `pubkey!` macro is reachable
+/// through `anchor_lang::solana_program` in this solana version.
+const ED25519_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
+    3, 125, 70, 214, 124, 147, 251, 190, 18, 249, 66, 143, 131, 141, 64, 255, 5, 112, 116, 73,
+    39, 244, 138, 100, 252, 202, 112, 68, 128, 0, 0, 0,
+]);
 
 const COUNT_OFFSET: usize = 0;
 const OFFSETS_START: usize = 2;
@@ -62,7 +68,7 @@ pub fn verify_signed_message(
     let ix = load_instruction_at_checked(ed25519_ix_index as usize, instructions_sysvar)?;
 
     // (a) native Ed25519 program only.
-    require_keys_eq!(ix.program_id, ed25519_program::ID, GateError::NotEd25519Program);
+    require_keys_eq!(ix.program_id, ED25519_PROGRAM_ID, GateError::NotEd25519Program);
 
     let data = &ix.data;
     require!(

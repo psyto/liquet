@@ -41,7 +41,13 @@ authorization is ever signed → `release()` cannot fire → escrow intact.
 Plus: `program_id` binding (no cross-gate replay), `settlement_id` replay marker,
 `expiry`, and an emergency `pause` authority.
 
-## Status — Codex review round 1 reflected; SBF build pending
+## Status — Codex review round 1 reflected; **SBF build green**
+
+`cargo build-sbf` produces `target/deploy/liquet_gate.so` (~289 KB) and host
+`cargo test` passes (4). Built with Solana platform-tools **v1.54** (Rust ≥1.85);
+the older v1.44 / Rust 1.79 could not parse the edition-2024 crates in
+`anchor-spl 0.32`'s tree — that was a toolchain-version issue, now resolved by
+`agave-install init v4.1.2`.
 
 CC scaffold, adversarially reviewed by Codex (no self-merge). Round-1 findings
 reflected on this branch:
@@ -59,12 +65,14 @@ reflected on this branch:
   to both the Anchor-root and program manifests (unblocks `anchor build`).
 
 Still open / for Codex:
-- **SBF build not yet green.** The previous lockfile pulled `block-buffer 0.12.1`
-  (edition 2024), which SBF Rust 1.79 rejects. `Cargo.lock` is removed here —
-  regenerate with the SBF toolchain (pin `block-buffer` to an edition-2021 version
-  if needed) and commit the authoritative lockfile.
+- **SBF integration tests** — Settle succeeds / Hold rejected / signature-swap /
+  double-release / malicious Ed25519 offsets. This is the real proof of the guards.
 - `declare_id!` + `BOOTSTRAP_AUTHORITY` placeholders — set real keys before deploy.
-- Ed25519 malicious-offset + Settle / Hold / double-release **SBF integration tests**.
+- The Ed25519 program id is hardcoded as bytes (`src/ed25519.rs`) because neither the
+  `ed25519_program` module nor the `pubkey!` macro resolves through
+  `anchor_lang::solana_program` at this version — sanity-check the constant.
+- 14 benign `unexpected_cfg` warnings from the anchor `Accounts` derive under the
+  newer Rust; suppress via `[lints]` if desired.
 - Token-2022 (`token_interface`) only if the demo mint uses extensions.
 
 ## Next increments
