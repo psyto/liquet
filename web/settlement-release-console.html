@@ -105,7 +105,7 @@
     .leg-tag.ok { color:var(--good); border-color:color-mix(in srgb, var(--good) 28%, var(--line)); }
     .leg-tag.bad { color:var(--crit); border-color:color-mix(in srgb, var(--crit) 28%, var(--line)); }
 
-    .pipeline { position:relative; display:grid; grid-template-columns:repeat(6, minmax(90px, 1fr)); gap:0; padding:22px 24px 23px; border-bottom:1px solid var(--line); overflow-x:auto; }
+    .pipeline { position:relative; display:grid; grid-template-columns:repeat(5, minmax(100px, 1fr)); gap:0; padding:22px 24px 23px; border-bottom:1px solid var(--line); overflow-x:auto; }
     .pipe-step { position:relative; min-width:90px; padding:0 12px 0 0; }
     .pipe-step:not(:last-child)::after { content:""; position:absolute; top:9px; left:19px; right:0; height:1px; background:var(--line-strong); z-index:0; }
     .step-dot { position:relative; z-index:1; display:grid; place-items:center; width:19px; height:19px; border:1px solid var(--line-strong); border-radius:50%; background:var(--surface); color:var(--faint); font:600 .56rem/1 var(--mono); transition:all .22s ease; }
@@ -117,7 +117,7 @@
     .pipe-step.blocked .step-dot { color:var(--surface); border-color:var(--crit); background:var(--crit); }
     .pipe-step.blocked .step-name { color:var(--crit); }
 
-    .result-area { display:grid; grid-template-columns:minmax(0,1fr) 255px; gap:18px; padding:23px 24px 24px; background:linear-gradient(180deg, var(--surface), var(--surface-2)); }
+    .result-area { padding:23px 24px 24px; background:linear-gradient(180deg, var(--surface), var(--surface-2)); }
     .result-label { margin:0 0 10px; color:var(--faint); font:600 .64rem/1 var(--mono); letter-spacing:.13em; text-transform:uppercase; }
     .result-state { display:flex; align-items:baseline; flex-wrap:wrap; gap:10px; min-height:38px; }
     .result-state strong { font:700 clamp(1.27rem, 2.7vw, 1.67rem)/1.1 var(--mono); letter-spacing:-.055em; }
@@ -145,6 +145,15 @@
     .receipt-lines b { color:var(--ink); font-weight:600; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .receipt-lines .receipt-decision { color:var(--faint); }
     .receipt-lines .receipt-decision b { color:var(--muted); }
+    .technical-details { border-top:1px solid var(--line); background:var(--surface); }
+    .technical-details summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 24px; color:var(--muted); cursor:pointer; font:650 .72rem/1.2 var(--mono); letter-spacing:.04em; list-style:none; }
+    .technical-details summary::-webkit-details-marker { display:none; }
+    .technical-details summary::before { content:"+"; color:var(--accent); font-size:1rem; }
+    .technical-details[open] summary { border-bottom:1px solid var(--line); color:var(--ink); }
+    .technical-details[open] summary::before { content:"−"; }
+    .technical-details summary span { margin-left:auto; color:var(--faint); font:500 .61rem/1 var(--mono); text-transform:uppercase; letter-spacing:.1em; }
+    .technical-body { padding:0; }
+    .technical-body .receipt { margin:18px 24px 24px; max-width:420px; }
 
     .scope-line { display:flex; align-items:flex-start; gap:9px; margin-top:18px; padding:14px 16px; border:1px solid var(--line); border-radius:11px; background:var(--surface-2); color:var(--muted); font-size:.78rem; line-height:1.5; }
     .scope-lock { flex:0 0 auto; color:var(--accent); font:.9rem/1.35 var(--mono); }
@@ -166,9 +175,11 @@
       .transfer-rail { width:auto; height:37px; transform:rotate(90deg); background:var(--surface-2); }
       .verdict-grid, .result-area { grid-template-columns:1fr; }
       .case-head, .verdict-card, .pipeline, .result-area { padding-left:18px; padding-right:18px; }
+      .technical-details summary { padding-left:18px; padding-right:18px; }
+      .technical-body .receipt { margin-left:18px; margin-right:18px; }
       .case-head { display:block; } .case-amount { display:inline-block; margin-top:13px; }
       .scenario-list { grid-template-columns:1fr; }
-      .pipeline { grid-template-columns:repeat(6, 90px); }
+      .pipeline { grid-template-columns:repeat(5, 100px); }
       .receipt { min-height:170px; }
       footer { display:block; } footer span { display:block; margin-top:7px; }
     }
@@ -189,104 +200,107 @@
   <main class="shell" id="console">
     <section class="intro" aria-labelledby="title">
       <div>
-        <p class="eyebrow">Settlement release console</p>
-        <h1 id="title">Release only when the verdict holds.</h1>
+        <p class="eyebrow">Payment safety gate</p>
+        <h1 id="title">Check every payment is safe before the money leaves.</h1>
       </div>
-      <p class="intro-copy">A custodian-facing control point for cross-VM settlement. Re-execute both legs, screen the delivery, then enforce the signed Settle or Hold at the Solana release point.</p>
+      <p class="intro-copy">A safety gate for outgoing payments. Pick an example below, run it, and watch it get sent — or stopped.</p>
     </section>
 
     <section class="balance-strip" aria-label="Live escrow and recipient balances">
       <div class="balance" id="escrow-balance-card">
-        <p class="balance-label"><i class="mini" aria-hidden="true"></i> Escrow vault · Solana</p>
+        <p class="balance-label"><i class="mini" aria-hidden="true"></i> Money in the vault</p>
         <div class="amount"><strong id="escrow-balance">250,000.00</strong><span>USDC</span></div>
-        <p class="balance-note" id="escrow-note">available for verified release</p>
+        <p class="balance-note" id="escrow-note">waiting for a safety check</p>
       </div>
       <div class="transfer-rail" aria-hidden="true"></div>
       <div class="balance" id="recipient-balance-card">
-        <p class="balance-label"><i class="mini recipient-mini" aria-hidden="true"></i> Recipient account</p>
+        <p class="balance-label"><i class="mini recipient-mini" aria-hidden="true"></i> Money received</p>
         <div class="amount"><strong id="recipient-balance">84,200.00</strong><span>USDC</span></div>
-        <p class="balance-note" id="recipient-note">moves only on a settled release</p>
+        <p class="balance-note" id="recipient-note">moves only when a payment is safe</p>
       </div>
     </section>
 
     <section class="console" aria-label="Settlement verification console">
-      <aside class="panel scenario-panel" aria-label="Settlement scenarios">
-        <div class="panel-heading"><h2>Settlements</h2><span>4 scripted</span></div>
+      <aside class="panel scenario-panel" aria-label="Example payments">
+        <div class="panel-heading"><h2>Example payments</h2><span>4 scripted</span></div>
         <div class="scenario-list" id="scenario-list"></div>
-        <div class="scenario-foot">Select a receipt, then run the same release decision a relying party would submit on-chain.</div>
+        <div class="scenario-foot">4 example payments · pick one · run the check · see Sent or Held.</div>
       </aside>
 
       <section class="panel workbench" aria-labelledby="case-title">
         <div class="case-head">
           <div>
-            <p class="case-kicker" id="case-number">Settlement 01</p>
-            <h2 id="case-title">Benign atomic settlement</h2>
-            <p class="case-id" id="case-id">settlement-xvm-001</p>
+            <p class="case-kicker" id="case-number">Example payment 01</p>
+            <h2 id="case-title">Normal payment</h2>
           </div>
           <div class="case-amount"><b id="case-amount">25,000.00</b> USDC</div>
         </div>
 
-        <div class="verdict-grid">
-          <article class="verdict-card" aria-labelledby="reconcile-label">
-            <p class="card-label" id="reconcile-label"><i class="split-dot" aria-hidden="true"></i> Cross-VM reconcile</p>
-            <div class="verdict-row"><span class="pill matched" id="reconcile-pill">Matched</span><span class="verdict-description" id="reconcile-description">both legs satisfy the proposed settlement</span></div>
-            <div class="leg-tags" id="leg-tags"></div>
-          </article>
-          <article class="verdict-card" aria-labelledby="screen-label">
-            <p class="card-label" id="screen-label"><i class="split-dot screen-dot" aria-hidden="true"></i> Custos delivery screen</p>
-            <div class="verdict-row"><span class="pill clean" id="screen-pill">clean</span></div>
-            <p class="verdict-description" id="screen-description">no delivery safety rule triggered</p>
-          </article>
-        </div>
-
-        <div class="pipeline" id="pipeline" aria-label="Release verification pipeline">
-          <div class="pipe-step" data-step="0"><i class="step-dot">1</i><span class="step-name">Proposal</span></div>
-          <div class="pipe-step" data-step="1"><i class="step-dot">2</i><span class="step-name">Re-exec both legs</span></div>
-          <div class="pipe-step" data-step="2"><i class="step-dot">3</i><span class="step-name">Reconcile</span></div>
-          <div class="pipe-step" data-step="3"><i class="step-dot">4</i><span class="step-name">Custos screen</span></div>
-          <div class="pipe-step" data-step="4"><i class="step-dot">5</i><span class="step-name">Gate decision</span></div>
-          <div class="pipe-step" data-step="5"><i class="step-dot">6</i><span class="step-name">On-chain release</span></div>
+        <div class="pipeline" id="pipeline" aria-label="Payment safety check steps">
+          <div class="pipe-step" data-step="0"><i class="step-dot">1</i><span class="step-name">Re-run the payment</span></div>
+          <div class="pipe-step" data-step="1"><i class="step-dot">2</i><span class="step-name">Compare to the promise</span></div>
+          <div class="pipe-step" data-step="2"><i class="step-dot">3</i><span class="step-name">Safety check</span></div>
+          <div class="pipe-step" data-step="3"><i class="step-dot">4</i><span class="step-name">Decision</span></div>
+          <div class="pipe-step" data-step="4"><i class="step-dot">5</i><span class="step-name">Send or Hold</span></div>
         </div>
 
         <div class="result-area">
           <div>
-            <p class="result-label">Release result</p>
-            <div class="result-state pending" id="result-state" aria-live="polite"><strong>READY TO VERIFY</strong><span>no release attempted</span></div>
-            <p class="result-note" id="result-note">The gate will verify a Liquet-signed decision, then either authorize <b>release()</b> or deny it before the escrow moves.</p>
+            <p class="result-label">What happened</p>
+            <div class="result-state pending" id="result-state" aria-live="polite"><strong>READY TO CHECK</strong><span>the money has not moved</span></div>
+            <p class="result-note" id="result-note">Run the safety check to decide whether this payment can be sent. The money only leaves the vault if it is safe.</p>
             <div class="action-row">
-              <button class="verify-button" id="verify-button" type="button">Verify &amp; Release <span aria-hidden="true">→</span></button>
+              <button class="verify-button" id="verify-button" type="button">Run safety check <span aria-hidden="true">→</span></button>
               <button class="reset-button" id="reset-button" type="button">Reset balances</button>
             </div>
           </div>
-          <aside class="receipt" aria-label="Signed decision receipt">
-            <div class="receipt-top"><span>SIGNED DECISION</span><span id="receipt-status">PENDING</span></div>
-            <div class="receipt-value pending" id="receipt-value">Awaiting verification</div>
-            <div class="receipt-lines">
-              <span><em>signer</em><b>Liquet Gate · pinned</b></span>
-              <span><em>signature</em><b>ed25519</b></span>
-              <span class="receipt-decision"><em>decision</em><b id="receipt-decision">—</b></span>
-              <span><em>receipt</em><b id="receipt-id">not issued</b></span>
-            </div>
-          </aside>
         </div>
+        <details class="technical-details">
+          <summary>How we decided <span>technical detail</span></summary>
+          <div class="technical-body">
+            <div class="verdict-grid">
+              <article class="verdict-card" aria-labelledby="reconcile-label">
+                <p class="card-label" id="reconcile-label"><i class="split-dot" aria-hidden="true"></i> Did the payment do what it promised?</p>
+                <div class="verdict-row"><span class="pill matched" id="reconcile-pill">Matched</span><span class="verdict-description" id="reconcile-description">both legs satisfy the proposed settlement</span></div>
+                <div class="leg-tags" id="leg-tags"></div>
+              </article>
+              <article class="verdict-card" aria-labelledby="screen-label">
+                <p class="card-label" id="screen-label"><i class="split-dot screen-dot" aria-hidden="true"></i> Is it hiding anything dangerous?</p>
+                <div class="verdict-row"><span class="pill clean" id="screen-pill">clean</span></div>
+                <p class="verdict-description" id="screen-description">no delivery safety rule triggered</p>
+              </article>
+            </div>
+            <aside class="receipt" aria-label="Technical signed decision receipt">
+              <div class="receipt-top"><span>SIGNED DECISION</span><span id="receipt-status">PENDING</span></div>
+              <div class="receipt-value pending" id="receipt-value">Awaiting verification</div>
+              <div class="receipt-lines">
+                <span><em>case</em><b id="case-id">settlement-xvm-001</b></span>
+                <span><em>signer</em><b>Liquet Gate · pinned</b></span>
+                <span><em>signature</em><b>ed25519</b></span>
+                <span class="receipt-decision"><em>decision</em><b id="receipt-decision">—</b></span>
+                <span><em>receipt</em><b id="receipt-id">not issued</b></span>
+              </div>
+            </aside>
+          </div>
+        </details>
       </section>
     </section>
 
     <aside class="scope-line">
       <span class="scope-lock" aria-hidden="true">⌁</span>
-      <span><b>Scope:</b> this scripted console demonstrates the release boundary. A Liquet ed25519-signed <b>Settle</b> or <b>Hold</b> is what the on-chain program enforces at the release point; it does not claim to reverse an already-executed delivery.</span>
+      <span><b>Scope:</b> this scripted console only decides whether money may leave the vault. It does not claim to reverse an already-executed delivery. Under the hood, the release point relies on a Liquet ed25519-signed <b>Settle</b> or <b>Hold</b>.</span>
     </aside>
   </main>
 
-  <footer class="shell"><span><b>LIQUET GATE</b> · independent release decision</span><span>scripted artifact · devnet wiring next</span></footer>
+  <footer class="shell"><span><b>LIQUET GATE</b> · payment safety before release</span><span>scripted artifact · devnet wiring next</span></footer>
 
   <script>
     /* Replace these objects with a devnet adapter later; rendering and the state machine consume only this contract. */
     const scenarios = [
-      { id: 'settlement-xvm-001', no: '01', title: 'Benign atomic settlement', amount: 25000, reconcile: 'Matched', reconcileClass: 'matched', reconcileCopy: 'both legs satisfy the proposed settlement', screen: 'clean', screenClass: 'clean', screenCopy: 'no delivery safety rule triggered', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'ok']], decision: 'SETTLE', released: true, moneyShot: false },
-      { id: 'settlement-xvm-002', no: '02', title: 'Mis-delivery (wrong recipient)', amount: 25000, reconcile: 'Mismatch', reconcileClass: 'mismatch', reconcileCopy: 'delivery does not match the proposed recipient', screen: 'clean', screenClass: 'clean', screenCopy: 'no delivery safety rule triggered', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'bad']], decision: 'HOLD', released: false, moneyShot: false },
-      { id: 'settlement-xvm-003', no: '03', title: 'Half-open (pay leg only)', amount: 25000, reconcile: 'HalfOpen', reconcileClass: 'halfopen', reconcileCopy: 'exactly one settlement leg is present', screen: 'clean', screenClass: 'clean', screenCopy: 'no delivery safety rule triggered', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'bad']], decision: 'HOLD', released: false, moneyShot: false },
-      { id: 'settlement-xvm-004', no: '04', title: 'Backdoored delivery', amount: 25000, reconcile: 'Matched', reconcileClass: 'matched', reconcileCopy: 'both legs satisfy the proposed settlement', screen: 'F2-delegate', screenClass: 'caught', screenCopy: '[F2-delegate] grants delegate authority over ALL of your tokens (unlimited)', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'ok']], decision: 'HOLD', released: false, moneyShot: true }
+      { id: 'settlement-xvm-001', no: '01', title: 'Normal payment', summary: 'Everything checks out.', outcome: 'SENT', amount: 25000, reconcile: 'Matched', reconcileClass: 'matched', reconcileCopy: 'both legs satisfy the proposed settlement', screen: 'clean', screenClass: 'clean', screenCopy: 'no delivery safety rule triggered', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'ok']], decision: 'SETTLE', released: true, moneyShot: false },
+      { id: 'settlement-xvm-002', no: '02', title: 'Wrong recipient', summary: 'Delivered to the wrong account.', outcome: 'HELD', holdNote: 'It was delivered to the wrong account, so it was not released. The money stayed in the vault.', amount: 25000, reconcile: 'Mismatch', reconcileClass: 'mismatch', reconcileCopy: 'delivery does not match the proposed recipient', screen: 'clean', screenClass: 'clean', screenCopy: 'no delivery safety rule triggered', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'bad']], decision: 'HOLD', released: false, moneyShot: false },
+      { id: 'settlement-xvm-003', no: '03', title: 'Only half went through', summary: 'Paid on one side, never delivered on the other.', outcome: 'HELD', holdNote: 'Only half went through, so it was not released. The money stayed in the vault.', amount: 25000, reconcile: 'HalfOpen', reconcileClass: 'halfopen', reconcileCopy: 'exactly one settlement leg is present', screen: 'clean', screenClass: 'clean', screenCopy: 'no delivery safety rule triggered', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'bad']], decision: 'HOLD', released: false, moneyShot: false },
+      { id: 'settlement-xvm-004', no: '04', title: 'Looks fine, but it’s a trap', summary: 'Arrives correctly, but releasing it would secretly hand an attacker control of the whole account.', outcome: 'HELD', holdNote: 'It looked correct, but an independent check caught it. Releasing this payment would have handed an attacker control of the funds — so it was not released. The money stayed put.', amount: 25000, reconcile: 'Matched', reconcileClass: 'matched', reconcileCopy: 'both legs satisfy the proposed settlement', screen: 'F2-delegate', screenClass: 'caught', screenCopy: '[F2-delegate] grants delegate authority over ALL of your tokens (unlimited)', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'ok']], decision: 'HOLD', released: false, moneyShot: true }
     ];
 
     const initialBalances = { escrow: 250000, recipient: 84200 };
@@ -313,7 +327,7 @@
       elements.list.innerHTML = scenarios.map((scenario, index) => `
         <button class="scenario-choice" type="button" data-index="${index}" aria-pressed="${index === selectedIndex}">
           <span class="scenario-no">${scenario.no}</span>
-          <span><span class="scenario-title">${scenario.title}</span><span class="scenario-decision ${scenario.released ? 'settle' : 'hold'}">${scenario.reconcile} · ${scenario.screen} → ${scenario.decision}</span></span>
+          <span><span class="scenario-title">${scenario.title}</span><span class="scenario-decision ${scenario.released ? 'settle' : 'hold'}">${scenario.summary} → ${scenario.outcome}</span></span>
         </button>`).join('');
       elements.list.querySelectorAll('button').forEach(button => button.addEventListener('click', () => selectScenario(Number(button.dataset.index))));
     }
@@ -331,10 +345,8 @@
     }
     function renderReady(scenario) {
       elements.resultState.className = 'result-state pending';
-      elements.resultState.innerHTML = '<strong>READY TO VERIFY</strong><span>no release attempted</span>';
-      elements.resultNote.innerHTML = scenario.moneyShot
-        ? 'Reconcile is <b>Matched</b>. The delivery screen is the independent check that can still issue <b>Hold</b> before <b>release()</b>.'
-        : 'The gate will verify a Liquet-signed decision, then either authorize <b>release()</b> or deny it before the escrow moves.';
+      elements.resultState.innerHTML = '<strong>READY TO CHECK</strong><span>the money has not moved</span>';
+      elements.resultNote.innerHTML = 'Run the safety check to see whether this payment can be sent. The money only leaves the vault if it is safe.';
       renderReceipt(scenario);
     }
     function selectScenario(index) {
@@ -343,7 +355,7 @@
       const scenario = scenarios[index];
       elements.escrowCard.classList.remove('frozen');
       buildScenarioList();
-      elements.caseNumber.textContent = `Settlement ${scenario.no}${scenario.moneyShot ? ' · money shot' : ''}`;
+      elements.caseNumber.textContent = `Example payment ${scenario.no}`;
       elements.caseTitle.textContent = scenario.title;
       elements.caseId.textContent = scenario.id;
       elements.caseAmount.textContent = formatAmount(scenario.amount);
@@ -355,7 +367,7 @@
       elements.screenDescription.textContent = scenario.screenCopy;
       elements.legTags.innerHTML = scenario.legs.map(([label, outcome]) => `<span class="leg-tag ${outcome}">${label}</span>`).join('');
       elements.verify.disabled = false;
-      elements.verify.textContent = released.has(scenario.id) ? 'Release already settled' : 'Verify & Release →';
+      elements.verify.textContent = released.has(scenario.id) ? 'Payment sent' : 'Run safety check →';
       if (released.has(scenario.id)) elements.verify.disabled = true;
       resetPipeline(); renderReady(scenario);
     }
@@ -383,36 +395,36 @@
     async function runVerification() {
       if (running) return;
       const scenario = scenarios[selectedIndex];
-      running = true; elements.verify.disabled = true; elements.verify.textContent = 'Verifying…';
-      for (let index = 0; index < 5; index += 1) { setPipeline(index); await wait(440); }
-      setPipeline(5, !scenario.released); await wait(440);
+      running = true; elements.verify.disabled = true; elements.verify.textContent = 'Running safety check…';
+      for (let index = 0; index < 4; index += 1) { setPipeline(index); await wait(440); }
+      setPipeline(4, !scenario.released); await wait(440);
       if (scenario.released) {
         elements.escrowCard.classList.remove('frozen');
         completePipeline();
         elements.resultState.className = 'result-state settled';
-        elements.resultState.innerHTML = '<strong>SETTLED — RELEASED</strong><span>release() confirmed on Solana</span>';
-        elements.resultNote.innerHTML = 'The signed <b>Settle</b> authorized this release. The escrow decreases and the recipient balance increases by <b>25,000.00 USDC</b>.';
+        elements.resultState.innerHTML = '<strong>SAFE — PAYMENT SENT.</strong><span>The money moved.</span>';
+        elements.resultNote.innerHTML = '<b>Everything checks out.</b> The payment was sent. The vault and recipient balances changed by <b>25,000.00 USDC</b>.';
         const nextEscrow = balances.escrow - scenario.amount, nextRecipient = balances.recipient + scenario.amount;
         elements.escrowCard.classList.remove('balance-moving'); elements.recipientCard.classList.remove('balance-moving');
         void elements.escrowCard.offsetWidth;
         elements.escrowCard.classList.add('balance-moving'); elements.recipientCard.classList.add('balance-moving');
         animateBalance(elements.escrow, balances.escrow, nextEscrow); animateBalance(elements.recipient, balances.recipient, nextRecipient);
         balances = { escrow: nextEscrow, recipient: nextRecipient };
-        elements.escrowNote.textContent = '25,000.00 USDC released'; elements.recipientNote.textContent = '25,000.00 USDC received';
+        elements.escrowNote.textContent = '25,000.00 USDC sent'; elements.recipientNote.textContent = '25,000.00 USDC received';
         released.add(scenario.id);
       } else {
         elements.resultState.className = 'result-state held';
-        elements.resultState.innerHTML = '<strong>HOLD — RELEASE DENIED</strong><span>escrow stays frozen</span>';
+        elements.resultState.innerHTML = '<strong>DANGER CAUGHT — PAYMENT HELD.</strong><span>The money stayed in the vault.</span>';
         elements.resultNote.innerHTML = scenario.moneyShot
-          ? '<b>Unsafe delivery detected → release denied → escrow balance unchanged.</b> Reconcile alone was Matched; the independent Custos screen issued Hold.'
-          : '<b>Hold</b> was signed and <b>release()</b> was denied. Escrow and recipient balances remain unchanged.';
-        elements.escrowNote.textContent = 'unchanged · release denied'; elements.recipientNote.textContent = 'unchanged · no release';
+          ? `<b>${scenario.holdNote}</b> Unsafe delivery detected → release denied → escrow balance unchanged.`
+          : `<b>${scenario.holdNote}</b> Release denied → balance unchanged.`;
+        elements.escrowNote.textContent = 'unchanged · payment held'; elements.recipientNote.textContent = 'unchanged · nothing sent';
         elements.escrowCard.classList.remove('frozen');
         void elements.escrowCard.offsetWidth;
         elements.escrowCard.classList.add('frozen');
       }
       renderReceipt(scenario, 'final');
-      elements.verify.textContent = scenario.released ? 'Release settled' : 'Run again';
+      elements.verify.textContent = scenario.released ? 'Payment sent' : 'Run safety check again';
       elements.verify.disabled = scenario.released;
       running = false;
     }
@@ -420,7 +432,7 @@
       if (running) return;
       balances = { ...initialBalances }; released = new Set();
       elements.escrow.textContent = formatAmount(balances.escrow); elements.recipient.textContent = formatAmount(balances.recipient);
-      elements.escrowNote.textContent = 'available for verified release'; elements.recipientNote.textContent = 'moves only on a settled release';
+      elements.escrowNote.textContent = 'waiting for a safety check'; elements.recipientNote.textContent = 'moves only when a payment is safe';
       elements.escrowCard.classList.remove('balance-moving'); elements.recipientCard.classList.remove('balance-moving');
       elements.escrowCard.classList.remove('frozen');
       selectScenario(selectedIndex);
