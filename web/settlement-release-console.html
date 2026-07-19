@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Liquet Gate — Settlement Release Console</title>
+  <style>
+    :root {
+      --bg: #eceff0; --surface: #fff; --surface-2: #f5f8f8; --ink: #101a1c;
+      --muted: #5a6a6e; --faint: #7f9094; --line: #d5dedd; --line-strong: #c2cecd;
+      --accent: #0c9585; --accent-hi: #12bba8; --good: #1c9a55; --warn: #a9711a; --crit: #c9463a;
+      --good-bg: rgba(28,154,85,.10); --warn-bg: rgba(169,113,26,.11); --crit-bg: rgba(201,70,58,.10);
+      --accent-bg: rgba(12,149,133,.09); --shadow: 0 1px 2px rgba(16,26,28,.04), 0 18px 45px rgba(16,26,28,.08);
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    :root[data-theme="dark"] {
+      --bg: #090e10; --surface: #101719; --surface-2: #0c1315; --ink: #e7eeee;
+      --muted: #92a3a6; --faint: #6f8184; --line: #1e2a2b; --line-strong: #2a3939;
+      --accent: #37cbb9; --accent-hi: #62e5d5; --good: #46c97f; --warn: #e6b34d; --crit: #f0776a;
+      --good-bg: rgba(70,201,127,.10); --warn-bg: rgba(230,179,77,.11); --crit-bg: rgba(240,119,106,.10);
+      --accent-bg: rgba(55,203,185,.10); --shadow: 0 1px 2px rgba(0,0,0,.42), 0 18px 55px rgba(0,0,0,.35);
+    }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme]) { color-scheme: dark; --bg:#090e10; --surface:#101719; --surface-2:#0c1315; --ink:#e7eeee; --muted:#92a3a6; --faint:#6f8184; --line:#1e2a2b; --line-strong:#2a3939; --accent:#37cbb9; --accent-hi:#62e5d5; --good:#46c97f; --warn:#e6b34d; --crit:#f0776a; --good-bg:rgba(70,201,127,.10); --warn-bg:rgba(230,179,77,.11); --crit-bg:rgba(240,119,106,.10); --accent-bg:rgba(55,203,185,.10); --shadow:0 1px 2px rgba(0,0,0,.42),0 18px 55px rgba(0,0,0,.35); } }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body { margin: 0; min-width: 320px; background: var(--bg); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+    button { font: inherit; }
+    button:focus-visible, [tabindex]:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 70%, white); outline-offset: 3px; }
+    .shell { width: min(1190px, calc(100% - 32px)); margin: 0 auto; }
+
+    .topbar { min-height: 62px; display:flex; justify-content:space-between; align-items:center; gap:16px; border-bottom:1px solid var(--line); }
+    .brand { color:var(--ink); font:600 .84rem/1 var(--mono); letter-spacing:.28em; text-decoration:none; white-space:nowrap; }
+    .brand b { color:var(--accent); }
+    .top-meta { display:flex; align-items:center; justify-content:flex-end; gap:12px; font:600 .65rem/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--faint); }
+    .sim { display:inline-flex; align-items:center; gap:7px; }
+    .live-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 4px var(--accent-bg); }
+    .icon-button { min-width:34px; height:34px; border:1px solid var(--line); border-radius:9px; color:var(--muted); background:var(--surface); cursor:pointer; }
+    .icon-button:hover { color:var(--accent); border-color:var(--accent); }
+
+    main { padding: 38px 0 50px; }
+    .intro { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin:0 0 29px; }
+    .eyebrow { margin:0 0 13px; color:var(--accent); font:600 .68rem/1 var(--mono); letter-spacing:.2em; text-transform:uppercase; }
+    h1 { max-width:19ch; margin:0; font-size:clamp(2.05rem, 4.4vw, 3.25rem); letter-spacing:-.052em; line-height:1.04; font-weight:650; text-wrap:balance; }
+    .intro-copy { max-width:38ch; margin:0 0 3px; color:var(--muted); font-size:.96rem; line-height:1.6; }
+
+    .balance-strip { display:grid; grid-template-columns:1fr auto 1fr; gap:0; overflow:hidden; border:1px solid var(--line); border-radius:16px; background:var(--line); box-shadow:var(--shadow); }
+    .balance { min-height:121px; padding:23px 25px 21px; background:var(--surface); position:relative; }
+    .balance-label { display:flex; align-items:center; gap:7px; margin:0 0 10px; color:var(--faint); font:600 .66rem/1 var(--mono); letter-spacing:.13em; text-transform:uppercase; }
+    .balance-label .mini { width:8px; height:8px; border-radius:2px; background:var(--accent); }
+    .balance-label .recipient-mini { background:var(--good); border-radius:50%; }
+    .amount { display:flex; align-items:baseline; gap:8px; font-variant-numeric: tabular-nums; }
+    .amount strong { font:650 clamp(1.7rem, 3.5vw, 2.35rem)/1 var(--mono); letter-spacing:-.06em; }
+    .amount span { color:var(--faint); font:600 .7rem/1 var(--mono); letter-spacing:.1em; }
+    .balance-note { margin:11px 0 0; color:var(--muted); font:.7rem/1.3 var(--mono); }
+    .transfer-rail { display:grid; place-items:center; width:105px; background:var(--surface-2); color:var(--accent); font:500 1.2rem/1 var(--mono); }
+    .transfer-rail::before { content:"→"; border:1px solid var(--line-strong); border-radius:50%; width:31px; height:31px; display:grid; place-items:center; }
+    .balance.balance-moving { background:linear-gradient(100deg, var(--surface) 0%, var(--accent-bg) 50%, var(--surface) 100%); background-size:220% 100%; animation:balance-wash 1.15s ease-out; }
+    @keyframes balance-wash { from { background-position:100% 0; } to { background-position:0 0; } }
+    .balance.frozen { border-color:color-mix(in srgb, var(--crit) 50%, var(--line)); animation:frozen-pulse .85s ease-out; }
+    .balance.frozen::after { content:"FROZEN"; position:absolute; top:15px; right:16px; color:var(--crit); font:700 .56rem/1 var(--mono); letter-spacing:.11em; }
+    @keyframes frozen-pulse { 0% { box-shadow:inset 0 0 0 0 var(--crit-bg); } 35% { box-shadow:inset 0 0 0 999px var(--crit-bg); } 100% { box-shadow:inset 0 0 0 0 var(--crit-bg); } }
+
+    .console { display:grid; grid-template-columns:272px minmax(0, 1fr); gap:18px; margin-top:22px; }
+    .panel { border:1px solid var(--line); border-radius:16px; background:var(--surface); box-shadow:var(--shadow); }
+    .scenario-panel { overflow:hidden; align-self:start; }
+    .panel-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:19px 18px 15px; border-bottom:1px solid var(--line); }
+    .panel-heading h2 { margin:0; font-size:.76rem; letter-spacing:.12em; text-transform:uppercase; font-family:var(--mono); }
+    .panel-heading span { color:var(--faint); font:.64rem/1 var(--mono); }
+    .scenario-list { list-style:none; margin:0; padding:6px; }
+    .scenario-choice { width:100%; display:grid; grid-template-columns:23px 1fr; gap:8px; padding:13px 12px; color:var(--ink); text-align:left; border:1px solid transparent; border-radius:10px; background:transparent; cursor:pointer; }
+    .scenario-choice:hover { background:var(--surface-2); }
+    .scenario-choice[aria-pressed="true"] { border-color:color-mix(in srgb, var(--accent) 42%, var(--line)); background:var(--accent-bg); }
+    .scenario-no { padding-top:1px; color:var(--faint); font:.68rem/1.35 var(--mono); }
+    .scenario-choice[aria-pressed="true"] .scenario-no { color:var(--accent); }
+    .scenario-title { display:block; font-size:.82rem; font-weight:650; line-height:1.28; letter-spacing:-.01em; }
+    .scenario-decision { display:block; margin-top:5px; color:var(--faint); font:.61rem/1.25 var(--mono); letter-spacing:.06em; }
+    .scenario-decision.settle { color:var(--good); }
+    .scenario-decision.hold { color:var(--crit); }
+    .scenario-foot { padding:14px 18px 17px; border-top:1px solid var(--line); color:var(--faint); font:.66rem/1.45 var(--mono); }
+
+    .workbench { min-width:0; overflow:hidden; }
+    .case-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:23px 24px 20px; border-bottom:1px solid var(--line); }
+    .case-kicker { margin:0 0 8px; color:var(--faint); font:.64rem/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; }
+    .case-head h2 { margin:0; font-size:clamp(1.2rem, 2.6vw, 1.55rem); line-height:1.15; letter-spacing:-.03em; }
+    .case-id { margin:10px 0 0; color:var(--muted); font:.69rem/1 var(--mono); }
+    .case-amount { padding:9px 11px; border:1px solid var(--line); border-radius:9px; color:var(--ink); font:600 .71rem/1 var(--mono); white-space:nowrap; }
+    .case-amount b { color:var(--accent); }
+
+    .verdict-grid { display:grid; grid-template-columns:1.08fr .92fr; gap:1px; background:var(--line); }
+    .verdict-card { padding:18px 24px 19px; background:var(--surface); min-width:0; }
+    .card-label { display:flex; align-items:center; gap:8px; margin:0 0 12px; color:var(--faint); font:600 .64rem/1 var(--mono); letter-spacing:.13em; text-transform:uppercase; }
+    .split-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); }
+    .screen-dot { background:var(--good); }
+    .verdict-row { display:flex; align-items:center; flex-wrap:wrap; gap:9px; }
+    .pill { display:inline-flex; align-items:center; min-height:25px; padding:4px 9px; border-radius:999px; font:700 .68rem/1 var(--mono); letter-spacing:.06em; }
+    .matched, .clean { color:var(--good); background:var(--good-bg); }
+    .mismatch { color:var(--crit); background:var(--crit-bg); }
+    .halfopen { color:var(--warn); background:var(--warn-bg); }
+    .caught { color:var(--crit); background:var(--crit-bg); }
+    .verdict-description { margin:10px 0 0; color:var(--muted); font:.76rem/1.48 var(--mono); }
+    .leg-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:11px; }
+    .leg-tag { padding:4px 6px; border:1px solid var(--line); border-radius:5px; color:var(--muted); font:.62rem/1 var(--mono); }
+    .leg-tag.ok { color:var(--good); border-color:color-mix(in srgb, var(--good) 28%, var(--line)); }
+    .leg-tag.bad { color:var(--crit); border-color:color-mix(in srgb, var(--crit) 28%, var(--line)); }
+
+    .pipeline { position:relative; display:grid; grid-template-columns:repeat(6, minmax(90px, 1fr)); gap:0; padding:22px 24px 23px; border-bottom:1px solid var(--line); overflow-x:auto; }
+    .pipe-step { position:relative; min-width:90px; padding:0 12px 0 0; }
+    .pipe-step:not(:last-child)::after { content:""; position:absolute; top:9px; left:19px; right:0; height:1px; background:var(--line-strong); z-index:0; }
+    .step-dot { position:relative; z-index:1; display:grid; place-items:center; width:19px; height:19px; border:1px solid var(--line-strong); border-radius:50%; background:var(--surface); color:var(--faint); font:600 .56rem/1 var(--mono); transition:all .22s ease; }
+    .step-name { display:block; margin-top:9px; color:var(--faint); font:600 .59rem/1.25 var(--mono); letter-spacing:.04em; text-transform:uppercase; }
+    .pipe-step.done .step-dot { color:var(--surface); border-color:var(--accent); background:var(--accent); }
+    .pipe-step.done .step-name { color:var(--muted); }
+    .pipe-step.active .step-dot { color:var(--surface); border-color:var(--accent); background:var(--accent); box-shadow:0 0 0 5px var(--accent-bg); }
+    .pipe-step.active .step-name { color:var(--accent); }
+    .pipe-step.blocked .step-dot { color:var(--surface); border-color:var(--crit); background:var(--crit); }
+    .pipe-step.blocked .step-name { color:var(--crit); }
+
+    .result-area { display:grid; grid-template-columns:minmax(0,1fr) 255px; gap:18px; padding:23px 24px 24px; background:linear-gradient(180deg, var(--surface), var(--surface-2)); }
+    .result-label { margin:0 0 10px; color:var(--faint); font:600 .64rem/1 var(--mono); letter-spacing:.13em; text-transform:uppercase; }
+    .result-state { display:flex; align-items:baseline; flex-wrap:wrap; gap:10px; min-height:38px; }
+    .result-state strong { font:700 clamp(1.27rem, 2.7vw, 1.67rem)/1.1 var(--mono); letter-spacing:-.055em; }
+    .result-state span { color:var(--muted); font:.72rem/1.3 var(--mono); }
+    .result-state.pending strong { color:var(--ink); }
+    .result-state.settled strong { color:var(--good); }
+    .result-state.held strong { color:var(--crit); }
+    .result-note { max-width:62ch; margin:13px 0 0; color:var(--muted); font-size:.88rem; line-height:1.55; }
+    .result-note b { color:var(--ink); }
+    .action-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+    .verify-button, .reset-button { min-height:42px; border-radius:9px; cursor:pointer; font:700 .72rem/1 var(--mono); letter-spacing:.045em; }
+    .verify-button { padding:0 15px; border:1px solid var(--accent); color:#062d29; background:var(--accent); box-shadow:0 6px 17px color-mix(in srgb, var(--accent) 25%, transparent); }
+    .verify-button:hover:not(:disabled) { background:var(--accent-hi); transform:translateY(-1px); }
+    .verify-button:disabled { opacity:.54; cursor:wait; }
+    .reset-button { padding:0 12px; color:var(--muted); background:transparent; border:1px solid var(--line-strong); }
+    .reset-button:hover { color:var(--accent); border-color:var(--accent); }
+    .receipt { align-self:stretch; padding:16px; border:1px dashed var(--line-strong); border-radius:11px; background:color-mix(in srgb, var(--surface) 72%, transparent); }
+    .receipt-top { display:flex; justify-content:space-between; gap:8px; color:var(--faint); font:600 .6rem/1 var(--mono); letter-spacing:.11em; }
+    .receipt-value { margin:11px 0 13px; font:700 .9rem/1.3 var(--mono); letter-spacing:.025em; }
+    .receipt-value.pending { color:var(--muted); }
+    .receipt-value.settle { color:var(--good); }
+    .receipt-value.hold { color:var(--crit); }
+    .receipt-lines { display:grid; gap:7px; padding-top:12px; border-top:1px dashed var(--line); color:var(--muted); font:.61rem/1.25 var(--mono); }
+    .receipt-lines span { display:flex; justify-content:space-between; gap:12px; }
+    .receipt-lines b { color:var(--ink); font-weight:600; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .receipt-lines .receipt-decision { color:var(--faint); }
+    .receipt-lines .receipt-decision b { color:var(--muted); }
+
+    .scope-line { display:flex; align-items:flex-start; gap:9px; margin-top:18px; padding:14px 16px; border:1px solid var(--line); border-radius:11px; background:var(--surface-2); color:var(--muted); font-size:.78rem; line-height:1.5; }
+    .scope-lock { flex:0 0 auto; color:var(--accent); font:.9rem/1.35 var(--mono); }
+    .scope-line b { color:var(--ink); }
+    footer { display:flex; justify-content:space-between; gap:18px; margin-top:29px; padding-top:18px; border-top:1px solid var(--line); color:var(--faint); font:.65rem/1.45 var(--mono); }
+    footer b { color:var(--muted); }
+
+    @media (max-width: 830px) {
+      .intro { display:block; } .intro-copy { margin-top:17px; }
+      .console { grid-template-columns:1fr; }
+      .scenario-list { display:grid; grid-template-columns:repeat(2,1fr); gap:4px; }
+      .scenario-foot { display:none; }
+    }
+    @media (max-width: 640px) {
+      .shell { width:min(100% - 22px, 1190px); } main { padding-top:26px; }
+      .top-meta .sim { display:none; }
+      .balance-strip { grid-template-columns:1fr; }
+      .balance { min-height:104px; padding:19px 20px; }
+      .transfer-rail { width:auto; height:37px; transform:rotate(90deg); background:var(--surface-2); }
+      .verdict-grid, .result-area { grid-template-columns:1fr; }
+      .case-head, .verdict-card, .pipeline, .result-area { padding-left:18px; padding-right:18px; }
+      .case-head { display:block; } .case-amount { display:inline-block; margin-top:13px; }
+      .scenario-list { grid-template-columns:1fr; }
+      .pipeline { grid-template-columns:repeat(6, 90px); }
+      .receipt { min-height:170px; }
+      footer { display:block; } footer span { display:block; margin-top:7px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior:auto !important; animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="shell topbar">
+    <a class="brand" href="#console" aria-label="Liquet Gate console">LIQUET<b>.</b> GATE</a>
+    <div class="top-meta">
+      <span class="sim"><i class="live-dot" aria-hidden="true"></i> scripted release console</span>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="Switch color theme" title="Switch color theme">◐</button>
+    </div>
+  </header>
+
+  <main class="shell" id="console">
+    <section class="intro" aria-labelledby="title">
+      <div>
+        <p class="eyebrow">Settlement release console</p>
+        <h1 id="title">Release only when the verdict holds.</h1>
+      </div>
+      <p class="intro-copy">A custodian-facing control point for cross-VM settlement. Re-execute both legs, screen the delivery, then enforce the signed Settle or Hold at the Solana release point.</p>
+    </section>
+
+    <section class="balance-strip" aria-label="Live escrow and recipient balances">
+      <div class="balance" id="escrow-balance-card">
+        <p class="balance-label"><i class="mini" aria-hidden="true"></i> Escrow vault · Solana</p>
+        <div class="amount"><strong id="escrow-balance">250,000.00</strong><span>USDC</span></div>
+        <p class="balance-note" id="escrow-note">available for verified release</p>
+      </div>
+      <div class="transfer-rail" aria-hidden="true"></div>
+      <div class="balance" id="recipient-balance-card">
+        <p class="balance-label"><i class="mini recipient-mini" aria-hidden="true"></i> Recipient account</p>
+        <div class="amount"><strong id="recipient-balance">84,200.00</strong><span>USDC</span></div>
+        <p class="balance-note" id="recipient-note">moves only on a settled release</p>
+      </div>
+    </section>
+
+    <section class="console" aria-label="Settlement verification console">
+      <aside class="panel scenario-panel" aria-label="Settlement scenarios">
+        <div class="panel-heading"><h2>Settlements</h2><span>4 scripted</span></div>
+        <div class="scenario-list" id="scenario-list"></div>
+        <div class="scenario-foot">Select a receipt, then run the same release decision a relying party would submit on-chain.</div>
+      </aside>
+
+      <section class="panel workbench" aria-labelledby="case-title">
+        <div class="case-head">
+          <div>
+            <p class="case-kicker" id="case-number">Settlement 01</p>
+            <h2 id="case-title">Benign atomic settlement</h2>
+            <p class="case-id" id="case-id">settlement-xvm-001</p>
+          </div>
+          <div class="case-amount"><b id="case-amount">25,000.00</b> USDC</div>
+        </div>
+
+        <div class="verdict-grid">
+          <article class="verdict-card" aria-labelledby="reconcile-label">
+            <p class="card-label" id="reconcile-label"><i class="split-dot" aria-hidden="true"></i> Cross-VM reconcile</p>
+            <div class="verdict-row"><span class="pill matched" id="reconcile-pill">Matched</span><span class="verdict-description" id="reconcile-description">both legs satisfy the proposed settlement</span></div>
+            <div class="leg-tags" id="leg-tags"></div>
+          </article>
+          <article class="verdict-card" aria-labelledby="screen-label">
+            <p class="card-label" id="screen-label"><i class="split-dot screen-dot" aria-hidden="true"></i> Custos delivery screen</p>
+            <div class="verdict-row"><span class="pill clean" id="screen-pill">clean</span></div>
+            <p class="verdict-description" id="screen-description">no delivery safety rule triggered</p>
+          </article>
+        </div>
+
+        <div class="pipeline" id="pipeline" aria-label="Release verification pipeline">
+          <div class="pipe-step" data-step="0"><i class="step-dot">1</i><span class="step-name">Proposal</span></div>
+          <div class="pipe-step" data-step="1"><i class="step-dot">2</i><span class="step-name">Re-exec both legs</span></div>
+          <div class="pipe-step" data-step="2"><i class="step-dot">3</i><span class="step-name">Reconcile</span></div>
+          <div class="pipe-step" data-step="3"><i class="step-dot">4</i><span class="step-name">Custos screen</span></div>
+          <div class="pipe-step" data-step="4"><i class="step-dot">5</i><span class="step-name">Gate decision</span></div>
+          <div class="pipe-step" data-step="5"><i class="step-dot">6</i><span class="step-name">On-chain release</span></div>
+        </div>
+
+        <div class="result-area">
+          <div>
+            <p class="result-label">Release result</p>
+            <div class="result-state pending" id="result-state" aria-live="polite"><strong>READY TO VERIFY</strong><span>no release attempted</span></div>
+            <p class="result-note" id="result-note">The gate will verify a Liquet-signed decision, then either authorize <b>release()</b> or deny it before the escrow moves.</p>
+            <div class="action-row">
+              <button class="verify-button" id="verify-button" type="button">Verify &amp; Release <span aria-hidden="true">→</span></button>
+              <button class="reset-button" id="reset-button" type="button">Reset balances</button>
+            </div>
+          </div>
+          <aside class="receipt" aria-label="Signed decision receipt">
+            <div class="receipt-top"><span>SIGNED DECISION</span><span id="receipt-status">PENDING</span></div>
+            <div class="receipt-value pending" id="receipt-value">Awaiting verification</div>
+            <div class="receipt-lines">
+              <span><em>signer</em><b>Liquet Gate · pinned</b></span>
+              <span><em>signature</em><b>ed25519</b></span>
+              <span class="receipt-decision"><em>decision</em><b id="receipt-decision">—</b></span>
+              <span><em>receipt</em><b id="receipt-id">not issued</b></span>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </section>
+
+    <aside class="scope-line">
+      <span class="scope-lock" aria-hidden="true">⌁</span>
+      <span><b>Scope:</b> this scripted console demonstrates the release boundary. A Liquet ed25519-signed <b>Settle</b> or <b>Hold</b> is what the on-chain program enforces at the release point; it does not claim to reverse an already-executed delivery.</span>
+    </aside>
+  </main>
+
+  <footer class="shell"><span><b>LIQUET GATE</b> · independent release decision</span><span>scripted artifact · devnet wiring next</span></footer>
+
+  <script>
+    /* Replace these objects with a devnet adapter later; rendering and the state machine consume only this contract. */
+    const scenarios = [
+      { id: 'settlement-xvm-001', no: '01', title: 'Benign atomic settlement', amount: 25000, reconcile: 'Matched', reconcileClass: 'matched', reconcileCopy: 'both legs satisfy the proposed settlement', screen: 'clean', screenClass: 'clean', screenCopy: 'no delivery safety rule triggered', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'ok']], decision: 'SETTLE', released: true, moneyShot: false },
+      { id: 'settlement-xvm-002', no: '02', title: 'Mis-delivery (wrong recipient)', amount: 25000, reconcile: 'Mismatch', reconcileClass: 'mismatch', reconcileCopy: 'delivery does not match the proposed recipient', screen: 'clean', screenClass: 'clean', screenCopy: 'no delivery safety rule triggered', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'bad']], decision: 'HOLD', released: false, moneyShot: false },
+      { id: 'settlement-xvm-003', no: '03', title: 'Half-open (pay leg only)', amount: 25000, reconcile: 'HalfOpen', reconcileClass: 'halfopen', reconcileCopy: 'exactly one settlement leg is present', screen: 'clean', screenClass: 'clean', screenCopy: 'no delivery safety rule triggered', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'bad']], decision: 'HOLD', released: false, moneyShot: false },
+      { id: 'settlement-xvm-004', no: '04', title: 'Backdoored delivery', amount: 25000, reconcile: 'Matched', reconcileClass: 'matched', reconcileCopy: 'both legs satisfy the proposed settlement', screen: 'F2-delegate', screenClass: 'caught', screenCopy: '[F2-delegate] grants delegate authority over ALL of your tokens (unlimited)', legs: [['EVM · pay-leg', 'ok'], ['SVM · delivery-leg', 'ok']], decision: 'HOLD', released: false, moneyShot: true }
+    ];
+
+    const initialBalances = { escrow: 250000, recipient: 84200 };
+    let balances = { ...initialBalances };
+    let selectedIndex = 0;
+    let running = false;
+    let released = new Set();
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const $ = (id) => document.getElementById(id);
+    const elements = {
+      list: $('scenario-list'), caseNumber: $('case-number'), caseTitle: $('case-title'), caseId: $('case-id'), caseAmount: $('case-amount'),
+      reconcilePill: $('reconcile-pill'), reconcileDescription: $('reconcile-description'), screenPill: $('screen-pill'), screenDescription: $('screen-description'), legTags: $('leg-tags'),
+      pipeline: $('pipeline'), resultState: $('result-state'), resultNote: $('result-note'), verify: $('verify-button'), reset: $('reset-button'),
+      receiptStatus: $('receipt-status'), receiptValue: $('receipt-value'), receiptDecision: $('receipt-decision'), receiptId: $('receipt-id'),
+      escrow: $('escrow-balance'), recipient: $('recipient-balance'), escrowNote: $('escrow-note'), recipientNote: $('recipient-note'),
+      escrowCard: $('escrow-balance-card'), recipientCard: $('recipient-balance-card'), theme: $('theme-toggle')
+    };
+
+    const formatAmount = (value) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+    const wait = (ms) => new Promise(resolve => setTimeout(resolve, reducedMotion ? 0 : ms));
+
+    function buildScenarioList() {
+      elements.list.innerHTML = scenarios.map((scenario, index) => `
+        <button class="scenario-choice" type="button" data-index="${index}" aria-pressed="${index === selectedIndex}">
+          <span class="scenario-no">${scenario.no}</span>
+          <span><span class="scenario-title">${scenario.title}</span><span class="scenario-decision ${scenario.released ? 'settle' : 'hold'}">${scenario.reconcile} · ${scenario.screen} → ${scenario.decision}</span></span>
+        </button>`).join('');
+      elements.list.querySelectorAll('button').forEach(button => button.addEventListener('click', () => selectScenario(Number(button.dataset.index))));
+    }
+
+    function resetPipeline() {
+      elements.pipeline.querySelectorAll('.pipe-step').forEach(step => step.className = 'pipe-step');
+    }
+    function renderReceipt(scenario, state = 'pending') {
+      const final = state === 'final';
+      elements.receiptStatus.textContent = final ? 'ATTESTED' : 'PENDING';
+      elements.receiptValue.textContent = final ? `${scenario.decision} · ed25519` : 'Awaiting verification';
+      elements.receiptValue.className = `receipt-value ${final ? (scenario.released ? 'settle' : 'hold') : 'pending'}`;
+      elements.receiptDecision.textContent = final ? scenario.decision : '—';
+      elements.receiptId.textContent = final ? `${scenario.id.slice(-3)} · signed` : 'not issued';
+    }
+    function renderReady(scenario) {
+      elements.resultState.className = 'result-state pending';
+      elements.resultState.innerHTML = '<strong>READY TO VERIFY</strong><span>no release attempted</span>';
+      elements.resultNote.innerHTML = scenario.moneyShot
+        ? 'Reconcile is <b>Matched</b>. The delivery screen is the independent check that can still issue <b>Hold</b> before <b>release()</b>.'
+        : 'The gate will verify a Liquet-signed decision, then either authorize <b>release()</b> or deny it before the escrow moves.';
+      renderReceipt(scenario);
+    }
+    function selectScenario(index) {
+      if (running) return;
+      selectedIndex = index;
+      const scenario = scenarios[index];
+      elements.escrowCard.classList.remove('frozen');
+      buildScenarioList();
+      elements.caseNumber.textContent = `Settlement ${scenario.no}${scenario.moneyShot ? ' · money shot' : ''}`;
+      elements.caseTitle.textContent = scenario.title;
+      elements.caseId.textContent = scenario.id;
+      elements.caseAmount.textContent = formatAmount(scenario.amount);
+      elements.reconcilePill.className = `pill ${scenario.reconcileClass}`;
+      elements.reconcilePill.textContent = scenario.reconcile;
+      elements.reconcileDescription.textContent = scenario.reconcileCopy;
+      elements.screenPill.className = `pill ${scenario.screenClass}`;
+      elements.screenPill.textContent = scenario.screen;
+      elements.screenDescription.textContent = scenario.screenCopy;
+      elements.legTags.innerHTML = scenario.legs.map(([label, outcome]) => `<span class="leg-tag ${outcome}">${label}</span>`).join('');
+      elements.verify.disabled = false;
+      elements.verify.textContent = released.has(scenario.id) ? 'Release already settled' : 'Verify & Release →';
+      if (released.has(scenario.id)) elements.verify.disabled = true;
+      resetPipeline(); renderReady(scenario);
+    }
+    function setPipeline(index, blocked = false) {
+      elements.pipeline.querySelectorAll('.pipe-step').forEach((step, stepIndex) => {
+        step.className = 'pipe-step';
+        if (stepIndex < index) step.classList.add('done');
+        if (stepIndex === index) step.classList.add(blocked ? 'blocked' : 'active');
+      });
+    }
+    function completePipeline() {
+      elements.pipeline.querySelectorAll('.pipe-step').forEach(step => step.className = 'pipe-step done');
+    }
+    function animateBalance(element, from, to) {
+      if (reducedMotion) { element.textContent = formatAmount(to); return; }
+      const duration = 880, start = performance.now();
+      const tick = (now) => {
+        const progress = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        element.textContent = formatAmount(from + (to - from) * eased);
+        if (progress < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+    async function runVerification() {
+      if (running) return;
+      const scenario = scenarios[selectedIndex];
+      running = true; elements.verify.disabled = true; elements.verify.textContent = 'Verifying…';
+      for (let index = 0; index < 5; index += 1) { setPipeline(index); await wait(440); }
+      setPipeline(5, !scenario.released); await wait(440);
+      if (scenario.released) {
+        elements.escrowCard.classList.remove('frozen');
+        completePipeline();
+        elements.resultState.className = 'result-state settled';
+        elements.resultState.innerHTML = '<strong>SETTLED — RELEASED</strong><span>release() confirmed on Solana</span>';
+        elements.resultNote.innerHTML = 'The signed <b>Settle</b> authorized this release. The escrow decreases and the recipient balance increases by <b>25,000.00 USDC</b>.';
+        const nextEscrow = balances.escrow - scenario.amount, nextRecipient = balances.recipient + scenario.amount;
+        elements.escrowCard.classList.remove('balance-moving'); elements.recipientCard.classList.remove('balance-moving');
+        void elements.escrowCard.offsetWidth;
+        elements.escrowCard.classList.add('balance-moving'); elements.recipientCard.classList.add('balance-moving');
+        animateBalance(elements.escrow, balances.escrow, nextEscrow); animateBalance(elements.recipient, balances.recipient, nextRecipient);
+        balances = { escrow: nextEscrow, recipient: nextRecipient };
+        elements.escrowNote.textContent = '25,000.00 USDC released'; elements.recipientNote.textContent = '25,000.00 USDC received';
+        released.add(scenario.id);
+      } else {
+        elements.resultState.className = 'result-state held';
+        elements.resultState.innerHTML = '<strong>HOLD — RELEASE DENIED</strong><span>escrow stays frozen</span>';
+        elements.resultNote.innerHTML = scenario.moneyShot
+          ? '<b>Unsafe delivery detected → release denied → escrow balance unchanged.</b> Reconcile alone was Matched; the independent Custos screen issued Hold.'
+          : '<b>Hold</b> was signed and <b>release()</b> was denied. Escrow and recipient balances remain unchanged.';
+        elements.escrowNote.textContent = 'unchanged · release denied'; elements.recipientNote.textContent = 'unchanged · no release';
+        elements.escrowCard.classList.remove('frozen');
+        void elements.escrowCard.offsetWidth;
+        elements.escrowCard.classList.add('frozen');
+      }
+      renderReceipt(scenario, 'final');
+      elements.verify.textContent = scenario.released ? 'Release settled' : 'Run again';
+      elements.verify.disabled = scenario.released;
+      running = false;
+    }
+    function resetBalances() {
+      if (running) return;
+      balances = { ...initialBalances }; released = new Set();
+      elements.escrow.textContent = formatAmount(balances.escrow); elements.recipient.textContent = formatAmount(balances.recipient);
+      elements.escrowNote.textContent = 'available for verified release'; elements.recipientNote.textContent = 'moves only on a settled release';
+      elements.escrowCard.classList.remove('balance-moving'); elements.recipientCard.classList.remove('balance-moving');
+      elements.escrowCard.classList.remove('frozen');
+      selectScenario(selectedIndex);
+    }
+    function applyTheme(theme) { document.documentElement.dataset.theme = theme; localStorage.setItem('liquet-gate-theme', theme); elements.theme.textContent = theme === 'dark' ? '☼' : '◐'; }
+    const storedTheme = localStorage.getItem('liquet-gate-theme');
+    if (storedTheme) applyTheme(storedTheme);
+    elements.theme.addEventListener('click', () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+    elements.verify.addEventListener('click', runVerification);
+    elements.reset.addEventListener('click', resetBalances);
+    buildScenarioList(); selectScenario(selectedIndex);
+  </script>
+</body>
+</html>
