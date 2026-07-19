@@ -10,7 +10,7 @@
 # `liquet` package over unifying its solana v3 deps with anchor's.
 
 [toolchain]
-anchor_version = "0.31.1"
+anchor_version = "0.32.1"
 
 [features]
 resolution = true

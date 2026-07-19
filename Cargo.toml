@@ -59,3 +59,8 @@ required-features = ["wire-custos"]
 name = "liquet-xvm-demo"
 path = "src/bin/xvm_demo.rs"
 required-features = ["wire-probatio"]
+
+# Required by `anchor build` (it reads the Anchor-workspace root manifest for
+# this profile). Harmless for the host `cargo test` build. See Anchor.toml.
+[profile.release]
+overflow-checks = true

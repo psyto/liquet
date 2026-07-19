@@ -41,17 +41,31 @@ authorization is ever signed → `release()` cannot fire → escrow intact.
 Plus: `program_id` binding (no cross-gate replay), `settlement_id` replay marker,
 `expiry`, and an emergency `pause` authority.
 
-## Status — CC scaffold, pending Codex review + SBF build
+## Status — Codex review round 1 reflected; SBF build pending
 
-Written by CC for adversarial review; **not yet built** with the Anchor/SBF
-toolchain. `src/authorization.rs` has host unit tests (roundtrip / offsets).
+CC scaffold, adversarially reviewed by Codex (no self-merge). Round-1 findings
+reflected on this branch:
 
-Open items flagged inline as `REVIEW(codex):`
-- Ed25519 `*_instruction_index` sentinel (`u16::MAX`) vs the exact program version.
-- `declare_id!` placeholder — run `anchor keys sync` before deploy.
-- `refund` handler + per-deposit accounting (scaffold is one escrow per config,mint).
-- Anchor workspace layout vs the existing `cargo test` (isolated `[workspace]`).
-- Token-2022 (`token_interface`) if the demo mint uses extensions; scaffold is classic SPL.
+- **P0-1 fixed** — `initialize` is gated to `BOOTSTRAP_AUTHORITY`, so an attacker
+  cannot front-run config creation and pin their own `trusted_signer`.
+- **P0-2 fixed** — the escrow token account is pinned to the canonical ATA of
+  `(vault, mint)`; a `Settle` for one pool can no longer debit another.
+- **P1** — `refund` implemented as a pause-authority emergency withdraw (no more
+  permanently-stuck funds); the `Escrow` state account was dropped (removing the
+  depositor-overwrite footgun).
+- Ed25519 restricted to a **preceding** instruction (`load_current_index_checked`).
+- Signing uses `ctx.bumps.vault` (less state dependence).
+- Toolchain: anchor pinned to **0.32.1**; `[profile.release] overflow-checks` added
+  to both the Anchor-root and program manifests (unblocks `anchor build`).
+
+Still open / for Codex:
+- **SBF build not yet green.** The previous lockfile pulled `block-buffer 0.12.1`
+  (edition 2024), which SBF Rust 1.79 rejects. `Cargo.lock` is removed here —
+  regenerate with the SBF toolchain (pin `block-buffer` to an edition-2021 version
+  if needed) and commit the authoritative lockfile.
+- `declare_id!` + `BOOTSTRAP_AUTHORITY` placeholders — set real keys before deploy.
+- Ed25519 malicious-offset + Settle / Hold / double-release **SBF integration tests**.
+- Token-2022 (`token_interface`) only if the demo mint uses extensions.
 
 ## Next increments
 

@@ -19,11 +19,14 @@ no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-# REVIEW(codex): pin to the Anchor toolchain actually installed for the build.
-anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
-anchor-spl = "0.31.1"
+# Pinned to the installed Anchor toolchain (0.32.1) reported by Codex.
+anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
+anchor-spl = "0.32.1"
 
 # Isolate this program from the parent `liquet` package: its own workspace root,
 # its own lockfile, its own (Anchor/SBF) dependency graph. This keeps the
 # existing `cargo test` at the repo root completely unaffected.
 [workspace]
+
+[profile.release]
+overflow-checks = true

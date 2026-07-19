@@ -20,12 +20,16 @@
 //! - ② [`authorization`]: the transfer parameters are read from the **signed
 //!   message**, never from separately-supplied instruction arguments.
 //!
-//! REVIEW(codex): this is a CC scaffold for adversarial review, not yet built
-//! with the Anchor/SBF toolchain. Priorities: the two guards above, replay via
-//! the receipt PDA, expiry, and the `invoke_signed` transfer authority.
+//! ## Escrow account binding (Codex P0-2)
+//! The escrow token account is pinned to the **canonical ATA of `(vault, mint)`**,
+//! so a `Settle` authorization for one pool cannot debit a different token account
+//! that merely shares the vault authority.
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::sysvar::instructions::ID as INSTRUCTIONS_SYSVAR_ID;
+use anchor_lang::solana_program::sysvar::instructions::{
+    load_current_index_checked, ID as INSTRUCTIONS_SYSVAR_ID,
+};
+use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{transfer_checked, Mint, Token, TokenAccount, TransferChecked};
 
 pub mod authorization;
@@ -37,12 +41,26 @@ use authorization::{ReleaseAuthorization, DECISION_SETTLE, RELEASE_AUTH_LEN, VER
 // before any deploy. `program_id` inside a ReleaseAuthorization must equal this.
 declare_id!("GaTe1111111111111111111111111111111111111111");
 
+/// Only this key may create the singleton config (Codex P0-1). Gating `initialize`
+/// to a fixed authority stops an attacker from front-running config creation and
+/// pinning their own `trusted_signer`. The placeholder below is a non-key by
+/// construction: if left unset, `initialize` can never succeed, so no config can
+/// exist and no deposits are possible — safe by default.
+///
+/// REVIEW(codex): set to Hiro's governance/bootstrap key before deploy.
+pub const BOOTSTRAP_AUTHORITY: Pubkey = Pubkey::new_from_array([0xB0; 32]);
+
 #[program]
 pub mod liquet_gate {
     use super::*;
 
     /// One-time config: pin the Liquet verdict signer and a pause authority.
-    pub fn initialize(ctx: Context<Initialize>, trusted_signer: Pubkey, pause_authority: Pubkey) -> Result<()> {
+    /// Gated to [`BOOTSTRAP_AUTHORITY`] (see the constant).
+    pub fn initialize(
+        ctx: Context<Initialize>,
+        trusted_signer: Pubkey,
+        pause_authority: Pubkey,
+    ) -> Result<()> {
         let cfg = &mut ctx.accounts.config;
         cfg.trusted_signer = trusted_signer;
         cfg.pause_authority = pause_authority;
@@ -51,12 +69,10 @@ pub mod liquet_gate {
         Ok(())
     }
 
-    /// Fund the escrow token account (authority = the `vault` PDA). Any depositor
-    /// (the LP / PSP / custodian) can top it up; refunds go back to `depositor`.
-    ///
-    /// REVIEW(codex): scaffold records the depositor for `refund`. A production
-    /// version needs per-deposit accounting; here we keep one escrow per (config,
-    /// mint) for the demo.
+    /// Fund the escrow (the canonical ATA of the `vault` PDA). Any depositor — the
+    /// LP / PSP / custodian — may top it up. This MVP escrow is a shared pool per
+    /// `(config, mint)`; recovery is via the pause-authority emergency [`refund`],
+    /// not per-depositor.
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         let cpi = CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -68,19 +84,11 @@ pub mod liquet_gate {
             },
         );
         transfer_checked(cpi, amount, ctx.accounts.mint.decimals)?;
-        ctx.accounts.escrow.depositor = ctx.accounts.depositor.key();
-        ctx.accounts.escrow.mint = ctx.accounts.mint.key();
-        ctx.accounts.escrow.bump = ctx.bumps.vault;
         Ok(())
     }
 
     /// The core: release escrowed funds iff a `Settle` authorization signed by the
     /// pinned Liquet signer verifies for *this exact* payout.
-    ///
-    /// `auth_bytes` is the canonical `ReleaseAuthorization`; `settlement_id` is
-    /// passed explicitly only to seed the replay-marker PDA and is asserted equal
-    /// to the value inside `auth_bytes`. `ed25519_ix_index` locates the Ed25519
-    /// verify instruction that must precede this one in the same transaction.
     pub fn release(
         ctx: Context<Release>,
         auth_bytes: Vec<u8>,
@@ -89,7 +97,17 @@ pub mod liquet_gate {
     ) -> Result<()> {
         let cfg = &ctx.accounts.config;
         require!(!cfg.paused, GateError::Paused);
-        require!(auth_bytes.len() == RELEASE_AUTH_LEN, GateError::BadAuthorizationLength);
+        require!(
+            auth_bytes.len() == RELEASE_AUTH_LEN,
+            GateError::BadAuthorizationLength
+        );
+
+        // The Ed25519 verify must *precede* this instruction in the same tx.
+        let current_ix_index = load_current_index_checked(&ctx.accounts.instructions_sysvar)?;
+        require!(
+            (ed25519_ix_index as u16) < current_ix_index,
+            GateError::Ed25519NotPreceding
+        );
 
         // ① The signature must BIND the pinned signer over exactly these bytes.
         ed25519::verify_signed_message(
@@ -131,10 +149,10 @@ pub mod liquet_gate {
         receipt.amount = auth.amount;
         receipt.bump = ctx.bumps.receipt;
 
-        // Transfer with the vault PDA authority via invoke_signed.
+        // Transfer with the vault PDA authority via invoke_signed (canonical bump).
         let config_key = cfg.key();
         let mint_key = ctx.accounts.mint.key();
-        let vault_bump = ctx.accounts.escrow.bump;
+        let vault_bump = ctx.bumps.vault;
         let seeds: &[&[u8]] = &[b"vault", config_key.as_ref(), mint_key.as_ref(), &[vault_bump]];
         let signer_seeds: &[&[&[u8]]] = &[seeds];
 
@@ -158,11 +176,35 @@ pub mod liquet_gate {
         Ok(())
     }
 
-    /// Return escrowed funds to the original depositor after expiry / on pause.
-    /// REVIEW(codex): scaffold — expiry semantics and authority checks need the
-    /// full design (depositor-only vs pause-authority emergency path).
-    pub fn refund(_ctx: Context<Refund>) -> Result<()> {
-        err!(GateError::NotImplemented)
+    /// Emergency recovery: the pause authority drains the full escrow balance to a
+    /// designated destination. This is the MVP's stuck-funds escape hatch (Codex
+    /// P1); it is a governance action, not a per-depositor refund.
+    pub fn refund(ctx: Context<Refund>) -> Result<()> {
+        require_keys_eq!(
+            ctx.accounts.pause_authority.key(),
+            ctx.accounts.config.pause_authority,
+            GateError::Unauthorized
+        );
+
+        let amount = ctx.accounts.escrow_token.amount;
+        let config_key = ctx.accounts.config.key();
+        let mint_key = ctx.accounts.mint.key();
+        let vault_bump = ctx.bumps.vault;
+        let seeds: &[&[u8]] = &[b"vault", config_key.as_ref(), mint_key.as_ref(), &[vault_bump]];
+        let signer_seeds: &[&[&[u8]]] = &[seeds];
+
+        let cpi = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                from: ctx.accounts.escrow_token.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
+                to: ctx.accounts.destination_token.to_account_info(),
+                authority: ctx.accounts.vault.to_account_info(),
+            },
+            signer_seeds,
+        );
+        transfer_checked(cpi, amount, ctx.accounts.mint.decimals)?;
+        Ok(())
     }
 
     /// Emergency stop, gated by the multisig pause authority set at initialize.
@@ -192,16 +234,6 @@ impl GateConfig {
     pub const LEN: usize = 32 + 32 + 1 + 1;
 }
 
-#[account]
-pub struct Escrow {
-    pub depositor: Pubkey,
-    pub mint: Pubkey,
-    pub bump: u8, // vault PDA bump
-}
-impl Escrow {
-    pub const LEN: usize = 32 + 32 + 1;
-}
-
 /// Existence == "this settlement already released". `init` blocks replay.
 #[account]
 pub struct ReceiptMarker {
@@ -221,14 +253,16 @@ impl ReceiptMarker {
 pub struct Initialize<'info> {
     #[account(
         init,
-        payer = payer,
+        payer = authority,
         space = 8 + GateConfig::LEN,
         seeds = [b"config"],
         bump
     )]
     pub config: Account<'info, GateConfig>,
-    #[account(mut)]
-    pub payer: Signer<'info>,
+
+    /// Only the fixed bootstrap authority may create the singleton config.
+    #[account(mut, address = BOOTSTRAP_AUTHORITY)]
+    pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -237,20 +271,17 @@ pub struct Deposit<'info> {
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, GateConfig>,
 
-    #[account(
-        init_if_needed,
-        payer = depositor,
-        space = 8 + Escrow::LEN,
-        seeds = [b"escrow", config.key().as_ref(), mint.key().as_ref()],
-        bump
-    )]
-    pub escrow: Account<'info, Escrow>,
-
-    /// CHECK: PDA authority over the escrow token account; never signs off-chain.
+    /// CHECK: PDA authority over the escrow ATA; never signs off-chain.
     #[account(seeds = [b"vault", config.key().as_ref(), mint.key().as_ref()], bump)]
     pub vault: UncheckedAccount<'info>,
 
-    #[account(mut, token::mint = mint, token::authority = vault)]
+    /// The escrow is the canonical ATA of (vault, mint) — created on first deposit.
+    #[account(
+        init_if_needed,
+        payer = depositor,
+        associated_token::mint = mint,
+        associated_token::authority = vault,
+    )]
     pub escrow_token: Account<'info, TokenAccount>,
 
     #[account(mut, token::mint = mint, token::authority = depositor)]
@@ -261,6 +292,7 @@ pub struct Deposit<'info> {
     #[account(mut)]
     pub depositor: Signer<'info>,
     pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
 
@@ -270,17 +302,16 @@ pub struct Release<'info> {
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, GateConfig>,
 
-    #[account(
-        seeds = [b"escrow", config.key().as_ref(), mint.key().as_ref()],
-        bump
-    )]
-    pub escrow: Account<'info, Escrow>,
-
-    /// CHECK: PDA authority over the escrow token account; verified by seeds.
+    /// CHECK: PDA authority over the escrow ATA; verified by seeds.
     #[account(seeds = [b"vault", config.key().as_ref(), mint.key().as_ref()], bump)]
     pub vault: UncheckedAccount<'info>,
 
-    #[account(mut, token::mint = mint, token::authority = vault)]
+    /// Pinned to the canonical ATA of (vault, mint) — cannot be substituted.
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = vault,
+    )]
     pub escrow_token: Account<'info, TokenAccount>,
 
     #[account(mut, token::mint = mint)]
@@ -313,7 +344,25 @@ pub struct Release<'info> {
 pub struct Refund<'info> {
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, GateConfig>,
-    // REVIEW(codex): fill in escrow/vault/depositor_token + expiry gate.
+
+    /// CHECK: PDA authority over the escrow ATA; verified by seeds.
+    #[account(seeds = [b"vault", config.key().as_ref(), mint.key().as_ref()], bump)]
+    pub vault: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = vault,
+    )]
+    pub escrow_token: Account<'info, TokenAccount>,
+
+    #[account(mut, token::mint = mint)]
+    pub destination_token: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+
+    pub pause_authority: Signer<'info>,
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
@@ -358,6 +407,8 @@ pub enum GateError {
     AuthorizationExpired,
     #[msg("escrow balance is insufficient for the signed amount")]
     InsufficientEscrow,
+    #[msg("Ed25519 verify instruction must precede this instruction")]
+    Ed25519NotPreceding,
     #[msg("preceding instruction is not the native Ed25519 program")]
     NotEd25519Program,
     #[msg("malformed Ed25519 instruction data")]
@@ -372,6 +423,4 @@ pub enum GateError {
     MessageMismatch,
     #[msg("not authorized")]
     Unauthorized,
-    #[msg("not implemented in this scaffold")]
-    NotImplemented,
 }
