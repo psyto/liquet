@@ -1,0 +1,30 @@
+# Anchor workspace for the on-chain enforcement point (liquet-gate).
+#
+# The Rust verifier (`liquet` package at the repo root) is intentionally NOT part
+# of this Anchor/Cargo workspace — `programs/liquet-gate` declares its own
+# `[workspace]` so the existing `cargo test` stays untouched. Anchor builds the
+# program via its own manifest.
+#
+# REVIEW(codex): confirm this layout builds with the installed Anchor; if the
+# tooling insists on a root virtual manifest, prefer `[workspace] exclude`-ing the
+# `liquet` package over unifying its solana v3 deps with anchor's.
+
+[toolchain]
+anchor_version = "0.31.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+liquet_gate = "GaTe1111111111111111111111111111111111111111"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
