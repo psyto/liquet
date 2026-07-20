@@ -1,0 +1,19 @@
+[package]
+name = "liquet-release-gate"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Reference release-gate check for custody and PSP payout paths."
+
+# Deliberately separate from Liquet's core package: this is an integration
+# artifact a custodian can vendor without changing the verifier's build graph.
+[workspace]
+
+[dependencies]
+liquet = { path = "../.." }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+
+[dev-dependencies]
+ed25519-dalek = "2"

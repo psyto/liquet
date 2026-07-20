@@ -33,6 +33,23 @@ pub struct PolicySnapshot {
     pub require_recovered_facts: bool,
 }
 
+/// The exact payment a relying party is about to release from *its own* system.
+///
+/// This is optional for backwards-compatible generic Liquet attestations, but a
+/// custody / PSP release path MUST require it. When present it is serialized
+/// inside [`DecisionBinding`] and therefore covered by the existing Ed25519
+/// signature and `liquet/decision/v2\0` digest — it is not a second signature
+/// format.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReleasePaymentBinding {
+    pub settlement_id: String,
+    pub recipient: String,
+    pub amount: u64,
+    pub mint: String,
+    /// Unix seconds. A release gate must Hold after this time.
+    pub expires_at: i64,
+}
+
 impl PolicySnapshot {
     pub fn of(p: &GatePolicy) -> Self {
         Self {
@@ -58,6 +75,10 @@ pub struct DecisionBinding {
     pub invariant: InvariantVerdict,
     pub policy: PolicySnapshot,
     pub decision: LiquetDecision,
+    /// Optional only for generic attestations. A model-(b) release gate rejects
+    /// an absent binding rather than guessing payment fields from claim hashes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_payment: Option<ReleasePaymentBinding>,
 }
 
 impl DecisionBinding {
@@ -84,7 +105,17 @@ impl DecisionBinding {
             invariant: invariant.clone(),
             policy: PolicySnapshot::of(policy),
             decision: decision.clone(),
+            release_payment: None,
         }
+    }
+
+    /// Bind this signed verdict to one exact relying-party payout. The caller
+    /// must supply the same values its own release logic will compare before it
+    /// moves money. This builder preserves the legacy generic constructor while
+    /// making the stronger model-(b) contract explicit.
+    pub fn with_release_payment(mut self, payment: ReleasePaymentBinding) -> Self {
+        self.release_payment = Some(payment);
+        self
     }
 
     /// Domain-separated 32-byte hash the signature commits to. Deterministic:

@@ -1,0 +1,19 @@
+[package]
+name = "liquet-gate-driver"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Host-only live-cluster driver for the Liquet reference release gate."
+
+# This is deliberately a separate workspace: it must never enter the program's
+# SBF dependency graph. Run it with `cargo run --manifest-path driver/Cargo.toml`.
+[workspace]
+
+[dependencies]
+anyhow = "1"
+anchor-lang = "0.32.1"
+liquet-gate = { path = "..", features = ["no-entrypoint"] }
+solana-client = "2.3"
+solana-sdk = "2.3"
+spl-token = "8"
+spl-associated-token-account = "7"

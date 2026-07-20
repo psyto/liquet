@@ -25,7 +25,7 @@ pub mod seam;
 
 pub use attest::{
     sign_decision, verify_decision, verify_self_consistent, DecisionBinding, LegDigest,
-    PolicySnapshot, SignedDecision, VerifyError,
+    PolicySnapshot, ReleasePaymentBinding, SignedDecision, VerifyError,
 };
 pub use erc8004::{
     evidence_bundle_json, validation_response, verify_bundle, BundleError, ValidationResponse,

@@ -37,9 +37,9 @@ pub mod ed25519;
 
 use authorization::{ReleaseAuthorization, DECISION_SETTLE, RELEASE_AUTH_LEN, VERSION};
 
-// REVIEW(codex): placeholder program id — replace with `anchor keys sync` output
-// before any deploy. `program_id` inside a ReleaseAuthorization must equal this.
-declare_id!("GaTe1111111111111111111111111111111111111111");
+// Devnet program id (keypair in .keys/program.json, gitignored). The
+// `program_id` inside a ReleaseAuthorization must equal this.
+declare_id!("2Dt3t8PnHdZzWMxUfsoo7VyrDCCzc5mYAFoSqXhwJ6rx");
 
 /// Only this key may create the singleton config (Codex P0-1). Gating `initialize`
 /// to a fixed authority stops an attacker from front-running config creation and
@@ -47,8 +47,11 @@ declare_id!("GaTe1111111111111111111111111111111111111111");
 /// construction: if left unset, `initialize` can never succeed, so no config can
 /// exist and no deposits are possible — safe by default.
 ///
-/// REVIEW(codex): set to Hiro's governance/bootstrap key before deploy.
-pub const BOOTSTRAP_AUTHORITY: Pubkey = Pubkey::new_from_array([0xB0; 32]);
+/// Devnet bootstrap authority (keypair in .keys/bootstrap.json, gitignored).
+pub const BOOTSTRAP_AUTHORITY: Pubkey = Pubkey::new_from_array([
+    90, 119, 240, 133, 106, 247, 185, 217, 53, 89, 45, 37, 76, 192, 213, 100, 208, 33, 33, 33,
+    204, 222, 93, 127, 209, 158, 178, 187, 52, 209, 23, 151,
+]);
 
 #[program]
 pub mod liquet_gate {

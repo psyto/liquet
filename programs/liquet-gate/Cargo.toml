@@ -27,6 +27,11 @@ anchor-spl = "0.32.1"
 # its own lockfile, its own (Anchor/SBF) dependency graph. This keeps the
 # existing `cargo test` at the repo root completely unaffected.
 [workspace]
+exclude = ["driver"]
 
 [profile.release]
 overflow-checks = true
+
+# End-to-end enforcement is proven by the host driver (see ./driver) against a
+# real validator, not an in-process harness. (LiteSVM was dropped: incompatible
+# with the anchor-spl 0.32 / agave 4.1 dependency set.)
