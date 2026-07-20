@@ -167,6 +167,15 @@ and (b) a length-prefixed canonical encoding before any external verifier
 implementation.
 
 ## Changelog
+- **v0.5** — non-custodial release binding: `attest.rs` gains a signed
+  `ReleasePaymentBinding` (recipient / amount / mint / settlement id / expiry),
+  carried inside `DecisionBinding` so it is covered by the same signed digest
+  (`skip_serializing_if` preserves the legacy digest when absent). Consumed by
+  the model-(b) [`crates/liquet-release-gate`](./crates/liquet-release-gate):
+  a relying party's own release path releases only for a pinned-signer,
+  unexpired `Settle` bound to the exact payment. Liquet holds no funds;
+  [`programs/liquet-gate`](./programs/liquet-gate) is a devnet-live *reference*
+  enforcement gate, not custody. Additive; seam types and `decide` unchanged.
 - **v0.4** — non-repudiation: `attest.rs` — ed25519-signed verdicts bound to all
   leg reexec digests + full invariant verdict + policy + claim hash;
   `verify_decision` pins a trusted signer (`verify_self_consistent` is the
